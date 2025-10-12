@@ -1,0 +1,80 @@
+/* LoginModal.css */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: #1e1e2f; /* 어두운 배경 */
+  color: #fff;
+  padding: 30px;
+  border-radius: 12px;
+  width: 360px;
+  max-width: 90%;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  color: #fff;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.modal form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal input[type="text"],
+.modal input[type="password"],
+.modal input[type="email"] {
+  padding: 10px;
+  border-radius: 6px;
+  border: none;
+  background: #2c2c3e;
+  color: #fff;
+}
+
+.modal input[type="text"]::placeholder,
+.modal input[type="password"]::placeholder,
+.modal input[type="email"]::placeholder {
+  color: #bbb;
+}
+
+.modal button[type="submit"] {
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  background-color: #4f90ff;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.modal button[type="submit"]:hover {
+  background-color: #3577e6;
+}
+
+.modal label {
+  margin-right: 15px;
+}

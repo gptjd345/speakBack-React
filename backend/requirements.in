@@ -1,0 +1,16 @@
+langgraph
+openai-whisper
+numpy<=2.2.0
+soundfile
+TTS
+python-dotenv
+vosk
+openai
+fastapi                # FastAPI 웹 프레임워크
+uvicorn[standard]      # ASGI 서버
+python-multipart       # 파일 업로드 처리 (오디오)
+psycopg2-binary        # PostgreSQL 연동
+python-jose[cryptography]  # JWT 생성/검증
+passlib[bcrypt]        # 비밀번호 해싱
+python-dotenv          # .env 파일 로딩
+requests               # 외부 API 호출용 (필요 시)

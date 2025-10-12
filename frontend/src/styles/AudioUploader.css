@@ -1,0 +1,47 @@
+.audio-uploader {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: #fff;
+}
+
+.audio-uploader input[type="file"] {
+  border-radius: 6px;
+  padding: 8px;
+  background: #555;
+  color: #fff;
+  border: none;
+}
+
+.audio-uploader button {
+  padding: 10px;
+  border-radius: 6px;
+  border: none;
+  font-weight: 600;
+  min-width: 120px;
+}
+
+.audio-uploader .record-btn{
+  background-color: #b94e4e;  
+  color: #ccc;
+  cursor: pointer;
+}
+
+.input-method-container{
+  display: "flex";
+  flex-direction: "column";
+  align-items: flex-start;
+  width: "50%"; /* 화면의 절반 */
+}
+
+.send-btn {
+  background-color: #4f90ff;
+  color: #fff;
+  cursor: pointer;
+}
+
+.send-btn:disabled {
+  background-color: #555;
+  color: #ccc;
+  cursor: not-allowed;
+}
