@@ -7,11 +7,53 @@ function LoginModal({ onClose, onLogin }) {
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     alert(`${option} submitted!`);
-    onLogin();
+    try {
+      if (option === "Register") {
+        // FastAPI 백엔드로 회원가입 요청
+        const response = await fetch("http://localhost:8000/register", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ username, password, email }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          alert(`Error: ${errorData.detail}`);
+        } else {
+          alert("Registration successful!");
+          onLogin(); // 로그인 후 처리
+        }
+      } else {
+        // 로그인 로직
+        const response = await fetch("http://localhost:8000/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ username, password }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          alert(`Error: ${errorData.detail}`);
+        } else {
+          const data = await response.json();
+          alert("Login successful!");
+          // JWT 처리나 상태 관리
+          onLogin(data);
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Something went wrong!");
+    }
   };
+  
 
   return (
     <div className="modal-overlay">

@@ -14,3 +14,6 @@ python-jose[cryptography]  # JWT 생성/검증
 passlib[bcrypt]        # 비밀번호 해싱
 python-dotenv          # .env 파일 로딩
 requests               # 외부 API 호출용 (필요 시)
+sqlalchemy             # ORM
+alembic                # DB 마이그레이션
+bcrypt==4.0.1
