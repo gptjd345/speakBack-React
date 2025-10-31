@@ -26,32 +26,39 @@ function LoginModal({ onClose, onLogin }) {
           alert(`Error: ${errorData.detail}`);
         } else {
           alert("Registration successful!");
-          onLogin(); // 로그인 후 처리
+          const data = await performLogin(username, password);
+          onLogin(data); // update login status
         }
       } else {
-        // 로그인 로직
-        const response = await fetch("http://localhost:8000/login", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ username, password }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          alert(`Error: ${errorData.detail}`);
-        } else {
-          const data = await response.json();
-          alert("Login successful!");
-          // JWT 처리나 상태 관리
-          onLogin(data);
+          try {
+            const data = await performLogin(username, password);
+            alert("Login successful!");
+            onLogin(data); // update login status
+          } catch(err) {
+            alert(`Login failed: ${err.message}`);
+          }
         }
-      }
+      
     } catch (error) {
       console.error(error);
       alert("Something went wrong!");
     }
+  };
+
+  // perform login
+  const performLogin = async (username, password) => {
+    const response = await fetch("http://localhost:8000/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail);
+    }
+
+    return await response.json(); // This function is also async 
   };
   
 

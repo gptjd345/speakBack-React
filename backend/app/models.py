@@ -8,4 +8,5 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(100), unique=True, nullable=False)
     password = Column(String(255), nullable=False)
+    refresh_token = Column(String(512), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

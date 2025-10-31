@@ -54,7 +54,10 @@ function App() {
       {showModal && (
         <LoginModal 
           onClose={() => setShowModal(false)} 
-          onLogin={() => { setIsLoggedIn(true); setShowModal(false); }}
+          onLogin={(data) => { setIsLoggedIn(true); setShowModal(false); 
+            // Check the access token
+            console.log("JWT access_token : ", data.access_token);
+          }}
         />
       )}
     </div>
