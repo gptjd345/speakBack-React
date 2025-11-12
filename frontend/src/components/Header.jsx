@@ -1,15 +1,22 @@
 import React from "react";
 import "../styles/Header.css";
 
-function Header({ isLoggedIn, onLoginClick }) {
+function Header({ isLoggedIn, onLoginClick, onLogoutClick }) {
+  console.log("Header - isLoggedIn:", isLoggedIn); // 로그인 상태 확인용
   return (
     <header className="header">
       <div className="logo">SpeakBack</div>
-      {!isLoggedIn && (
-        <button className="login-btn" onClick={onLoginClick}>
-          Login
-        </button>
-      )}
+      <div>
+        {isLoggedIn ? (
+          <button className="login-btn" onClick={onLogoutClick}>
+            Logout
+          </button>
+        ) : (
+          <button className="login-btn" onClick={onLoginClick}>
+            Login
+          </button>
+        )}
+      </div>
     </header>
   );
 }

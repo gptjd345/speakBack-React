@@ -3,19 +3,21 @@ import Header from "./components/Header";
 import AudioUploader from "./components/AudioUploader";
 import LoginModal from "./components/LoginModal";
 import TargetTextInput from "./components/TargetTextInput";
+import { AuthProvider } from "./contexts/AuthContext";
+import { useAuth } from "./contexts/AuthContext";
 import Home from "./pages/Home";
 import "./styles/App.css";
 import "./styles/Header.css";
 
 
-function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+function AppContent() {
+  const { user, login, logout } = useAuth(); // 전역 로그인 상태 사용
   const [showModal, setShowModal] = useState(false);
   const [targetText, setTargetText] = useState("");
   const [showLoginWarning, setShowLoginWarning] = useState(false);
 
   const handleSendClick = () => {
-    if(!isLoggedIn) {
+    if(!user) {
       setShowLoginWarning(true);
     } else {
       setShowLoginWarning(false);
@@ -31,11 +33,13 @@ function App() {
     }
   }, [showLoginWarning]);
 
+  console.log("App - user:", user); // 로그인 상태 확인용
   return (
     <div className="App">
       <Header 
-        isLoggedIn={isLoggedIn} 
-        onLoginClick={() => setShowModal(true)} 
+        isLoggedIn={!!user} 
+        onLoginClick={() => setShowModal(true)}
+        onLogoutClick={logout}  // 로그아웃 버튼 클릭 시 실행 
       />
 
       {/* Toast 형태 경고창 */}
@@ -54,13 +58,24 @@ function App() {
       {showModal && (
         <LoginModal 
           onClose={() => setShowModal(false)} 
-          onLogin={(data) => { setIsLoggedIn(true); setShowModal(false); 
+          onLogin={async (userData) => { 
+            await login(userData); // 전역 로그인
+            setShowModal(false); 
             // Check the access token
-            console.log("JWT access_token : ", data.access_token);
+            console.log("user: ", userData);
           }}
         />
       )}
     </div>
+  );
+}
+
+// App 전체를 AuthProvider로 감싸서 전역 상태 제공
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

@@ -11,7 +11,7 @@ import os
 load_dotenv()
 
 # ✅ FastAPI 쪽 DB 설정 가져오기
-from app.database import Base, engine
+from app.db.database import Base, engine
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

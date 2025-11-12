@@ -1,7 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.auth_routes import router as api_router
-from app.database import Base, engine
+from app.db.database import Base, engine
 
 app = FastAPI(title="SpeakBack API")
 
@@ -21,4 +21,4 @@ app.add_middleware(
 # DB 테이블 생성
 Base.metadata.create_all(bind=engine)
 
-app.include_router(api_router)
+app.include_router(api_router, prefix="/api/auth", tags=["auth"])

@@ -17,3 +17,5 @@ requests               # 외부 API 호출용 (필요 시)
 sqlalchemy             # ORM
 alembic                # DB 마이그레이션
 bcrypt==4.0.1
+redis>=5.0.0
+pydantic-settings

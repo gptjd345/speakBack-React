@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import "../styles/LoginModal.css";
+import api from "../utils/api";
 
 function LoginModal({ onClose, onLogin }) {
   const [option, setOption] = useState("Login");
@@ -13,30 +14,20 @@ function LoginModal({ onClose, onLogin }) {
     try {
       if (option === "Register") {
         // FastAPI 백엔드로 회원가입 요청
-        const response = await fetch("http://localhost:8000/register", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ username, password, email }),
+        const response = await api.post("/api/auth/register", {
+          username,
+          password,
+          email,
         });
+        alert("Registration successful!");
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          alert(`Error: ${errorData.detail}`);
-        } else {
-          alert("Registration successful!");
-          const data = await performLogin(username, password);
-          onLogin(data); // update login status
-        }
+        // 회원가입 후 바로 로그인
+        const data = await performLogin(username, password);
+        onLogin(data);
       } else {
-          try {
-            const data = await performLogin(username, password);
-            alert("Login successful!");
-            onLogin(data); // update login status
-          } catch(err) {
-            alert(`Login failed: ${err.message}`);
-          }
+          const data = await performLogin(username, password);
+          alert("Login successful!");
+          onLogin(data);
         }
       
     } catch (error) {
@@ -47,18 +38,27 @@ function LoginModal({ onClose, onLogin }) {
 
   // perform login
   const performLogin = async (username, password) => {
-    const response = await fetch("http://localhost:8000/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail);
+  try {
+    const res = await api.post("/api/auth/login", { username, password });
+    console.log("##### performLogin : ", res.data.access_key);
+    console.log("###", res.data.access_key, typeof res.data.access_key);
+    if(res.data.access_key && res.data.access_key !== "undefined"){
+      // 로컬 테스트용으로 access_key를 로컬스토리지에 저장
+      localStorage.setItem("access_key", res.data.access_key);
+      console.log("##### performLogin 조건통과여부 : ", res.data.access_key);
     }
+    console.log("##### localStorage : ", localStorage.getItem("access_key"));
 
-    return await response.json(); // This function is also async 
+    // response.data 안에 서버 리턴 데이터가 들어있음
+    return res.data.user;
+  } catch (err) {
+    // 서버가 리턴한 에러 메시지 가져오기
+    if (err.response && err.response.data && err.response.data.detail) {
+      throw new Error(err.response.data.detail);
+    } else {
+      throw new Error("Login failed");
+    }
+  }
   };
   
 

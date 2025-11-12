@@ -12,6 +12,8 @@ aiohttp==3.13.0
     # via tts
 aiosignal==1.4.0
     # via aiohttp
+alembic==1.17.1
+    # via -r requirements.in
 annotated-types==0.7.0
     # via pydantic
 anyascii==0.3.3
@@ -30,8 +32,10 @@ babel==2.17.0
     # via gruut
 bangla==0.0.5
     # via tts
-bcrypt==5.0.0
-    # via passlib
+bcrypt==4.0.1
+    # via
+    #   -r requirements.in
+    #   passlib
 blinker==1.9.0
     # via flask
 blis==1.2.1
@@ -226,6 +230,8 @@ llvmlite==0.45.1
     # via
     #   numba
     #   pynndescent
+mako==1.3.10
+    # via alembic
 marisa-trie==1.3.1
     # via language-data
 markdown==3.9
@@ -236,6 +242,7 @@ markupsafe==3.0.3
     # via
     #   flask
     #   jinja2
+    #   mako
     #   werkzeug
 matplotlib==3.10.7
     # via tts
@@ -363,11 +370,14 @@ pydantic==2.12.0
     #   langgraph
     #   langsmith
     #   openai
+    #   pydantic-settings
     #   spacy
     #   thinc
     #   weasel
 pydantic-core==2.41.1
     # via pydantic
+pydantic-settings==2.11.0
+    # via -r requirements.in
 pygments==2.19.2
     # via rich
 pynndescent==0.5.13
@@ -388,6 +398,7 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.1.1
     # via
     #   -r requirements.in
+    #   pydantic-settings
     #   uvicorn
 python-jose[cryptography]==3.5.0
     # via -r requirements.in
@@ -404,6 +415,8 @@ pyyaml==6.0.3
     #   transformers
     #   tts
     #   uvicorn
+redis==7.0.1
+    # via -r requirements.in
 regex==2025.9.18
     # via
     #   dateparser
@@ -470,6 +483,10 @@ spacy-legacy==3.0.12
     # via spacy
 spacy-loggers==1.0.5
     # via spacy
+sqlalchemy==2.0.44
+    # via
+    #   -r requirements.in
+    #   alembic
 srsly==2.5.1
     # via
     #   confection
@@ -539,6 +556,7 @@ typer==0.19.2
 typing-extensions==4.15.0
     # via
     #   aiosignal
+    #   alembic
     #   anyio
     #   fastapi
     #   grpcio
@@ -548,13 +566,16 @@ typing-extensions==4.15.0
     #   openai
     #   pydantic
     #   pydantic-core
+    #   sqlalchemy
     #   starlette
     #   torch
     #   typeguard
     #   typer
     #   typing-inspection
 typing-inspection==0.4.2
-    # via pydantic
+    # via
+    #   pydantic
+    #   pydantic-settings
 tzlocal==5.3.1
     # via dateparser
 umap-learn==0.5.9.post2
