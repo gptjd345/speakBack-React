@@ -71,7 +71,8 @@ function AudioUploader({ file, setFile, onSendClick }) {
 
   return (
     <div className="audio-uploader" style={{ marginTop: "50px"}}>
-      <h4>Upload or Record Your Voice</h4>
+      {/* 파일업로드 추가 시 이거 사용 <h4>Upload or Record Your Voice</h4> */}
+      <h4>Record Your Voice</h4>
       
       {/* 입력 선택 영역 */}
       <div className="input-method-container">

@@ -59,11 +59,12 @@ function AppContent() {
       </div>
 
       <div className="intro-box">
-        <h2 className="intro-title">발음 피드백 안내</h2>
+        <h2 className="intro-title">Speak with confidence</h2>
         <p className="intro-text">
-          SpeakBack에 오신 걸 환영합니다! 🎉<br />
-          텍스트를 입력하고 음성을 업로드하면 AI가 발음을 분석하고 피드백을 제공합니다. <br />
-          먼저 로그인하고 시작해 보세요!
+          Welcome to SpeakBack! 🎉<br />
+          Enter your text and upload your voice recording.<br />
+          Our AI will analyze your pronunciation and provide detailed feedback.<br />
+          Please log in to get started.<br />
         </p>
       </div>
   

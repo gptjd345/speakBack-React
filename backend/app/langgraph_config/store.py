@@ -21,6 +21,10 @@ class GlobalStore:
         self.tts_uk_audio = None   # uk tutor 가 만든 교정데이터
         self.tts_uk_comment = None # uk tutor 가 만든 교정데이터
 
+        self.strengths: None       # 강점
+        self.improvements: None    # 개선점
+        self.rhythm_feedback: None # 리듬 피드백
+
 # 전역 싱글톤처럼 import해서 씀
 global_store = GlobalStore()
 

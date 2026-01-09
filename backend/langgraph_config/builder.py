@@ -7,7 +7,7 @@ import tempfile
 import soundfile as sf
 import io
 import torch
-from TTS.api import TTS
+from app.core.tts_manager import get_us_tts
 
 from .pronunciation_module import evaluate_pronunciation
 
@@ -34,8 +34,8 @@ class PipelineState(dict):
 # Whisper 모델 (한번 로드 후 재사용) -- 필요없을거같아서 지움
 # ws_model = whisper.load_model("base")
 
-# 한번만 로드해서 재사용
-tts_us_model = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
+# TTS
+tts_us_model = get_us_tts()
 #tts_uk_model = TTS(model_name="tts_models/en/vctk/vits", progress_bar=False, gpu=False)
 
 # ---------------- 노드 정의 ----------------

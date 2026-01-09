@@ -2,6 +2,9 @@
 
 .idea/
 
+# Reference file
+*.wav
+
 # Node.js / React
 node_modules/
 build/

@@ -10,6 +10,7 @@ import io
 import subprocess
 
 from openai import OpenAI
+from app.core.tts_manager import get_us_tts
 
 def get_client():
     return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -87,18 +88,8 @@ def stt_vosk(user_audio_path: str) :
     conf_dict = {w["word"]: w.get("conf", 0) for w in words}
     return text, conf_dict
 
-# Try import Coqui TTS (optional)
-try:
-    from TTS.api import TTS
-    # 앱 시작 시 한 번만 로드
-    # 모델 선택: (사용 가능한 모델 이름은 환경에 따라 바꿔야 함)
-    # 예: LJSpeech → 미국 여성 화자 데이터셋 기반
-    # 발음은 전형적인 American English
-    tts_us_model = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", 
-                    progress_bar=False, gpu=False)
-    TTS_AVAILABLE = True
-except Exception:
-    TTS_AVAILABLE = False
+# Coqui TTS (optional)
+tts_us_model = get_us_tts()
 #tts_uk_model = TTS(model_name="tts_models/en/vctk/vits", progress_bar=False, gpu=False)
 
 # -----------------------------

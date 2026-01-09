@@ -38,6 +38,10 @@ def run_pipeline(audio_file, user_name: str, target_text: str):
             "user_duration": getattr(global_store, "user_duration", ""), # 청크들
             "us_ref_duration": getattr(global_store, "us_ref_duration", ""), # 청크들
 
+            "strengths": getattr(global_store, "strengths", []),             # 강점
+            "improvements": getattr(global_store, "improvements", []),       # 개선점
+            "rhythm_feedback": getattr(global_store, "rhythm_feedback", ""), # 리듬 피드백
+
         }
         
         return result

@@ -7,7 +7,7 @@ import tempfile
 import soundfile as sf
 import io
 import torch
-from TTS.api import TTS
+from app.core.tts_manager import get_us_tts
 
 from .pronunciation_module import evaluate_pronunciation
 
@@ -35,7 +35,7 @@ class PipelineState(dict):
 # ws_model = whisper.load_model("base")
 
 # 한번만 로드해서 재사용
-tts_us_model = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
+tts_us_model = get_us_tts()
 #tts_uk_model = TTS(model_name="tts_models/en/vctk/vits", progress_bar=False, gpu=False)
 
 # ---------------- 노드 정의 ----------------
@@ -75,13 +75,20 @@ def us_tutor_node(state: PipelineState):
     print("Score:\n", result["score"])
     print("Feedback:\n", result["feedback"])
     print("TTS Audio Bytes Length:", len(result["reference_tts"]))
-
+    print("strengths: ",result["strengths"])
+    print("improvements: ",result["improvements"])
+    print("rhythm_feedback: ",result["rhythm_feedback"])
+    
     global_store.score = result["score"]
     global_store.us_feedback = result["feedback"]
     global_store.tts_us_audio = result["reference_tts"]
     global_store.user_transcript = result["user_transcript"]
     global_store.user_duration = result["user_duration"]
     global_store.us_ref_duration = result["ref_duration"]
+
+    global_store.strengths = result["strengths"]
+    global_store.improvements = result["improvements"]
+    global_store.rhythm_feedback = result["rhythm_feedback"]
 
     return state
 
