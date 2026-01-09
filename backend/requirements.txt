@@ -378,6 +378,8 @@ pydantic-core==2.41.1
     # via pydantic
 pydantic-settings==2.11.0
     # via -r requirements.in
+pydub==0.25.1
+    # via -r requirements.in
 pygments==2.19.2
     # via rich
 pynndescent==0.5.13

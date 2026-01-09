@@ -1,8 +1,19 @@
 #routes.py
-from app.graph_runner_wrapper import run_pipeline
+from fastapi import APIRouter, UploadFile, File, Form
+from app.langgraph_config.graph_runner import run_pipeline
 
-@router.post("/process-audio")
-async def process_audio(file: UploadFile = File(...)):
-    audio_bytes = await file.read()
-    result = run_pipeline(audio_bytes, "username", "target_text")
-    return result
+router = APIRouter()
+
+@router.post("/process")
+async def process_audio(
+    audio: UploadFile = File(...), 
+    user_name: str = Form(...), 
+    target_text: str = Form(...)
+):
+    try:
+        audio_bytes = await audio.read()
+        # run_pipeline에 필요한 인자 전달
+        result = run_pipeline(audio_bytes, user_name, target_text)
+        return result
+    except Exception as e:
+        return {"error": str(e)}

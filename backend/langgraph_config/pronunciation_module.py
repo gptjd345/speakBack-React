@@ -59,7 +59,7 @@ def prepare_audio_for_vosk(org_file_path) -> io.BytesIO:
 # -----------------------------
 # Vosk 모델 로드
 # -----------------------------
-VOSK_MODEL_PATH = "/app/app/models/vosk-model-small-en-us-0.15"  # 모델 다운로드 후 경로
+VOSK_MODEL_PATH = "vosk-model-small-en-us-0.15"  # 모델 다운로드 후 경로
 if not os.path.exists(VOSK_MODEL_PATH):
     raise FileNotFoundError("Vosk 모델을 먼저 다운로드하세요!")
 vosk_model = Model(VOSK_MODEL_PATH)

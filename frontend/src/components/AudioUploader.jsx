@@ -1,17 +1,72 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import "../styles/AudioUploader.css";
 import { FaMicrophone, FaPaperPlane } from "react-icons/fa"; // 아이콘 import
 
-function AudioUploader({ onSendClick }) {
+function AudioUploader({ file, setFile, onSendClick }) {
   const [method, setMethod] = useState("Upload"); // 업로드/녹음 선택
-  const [file, setFile] = useState(null);
+  const [recording, setRecording] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const streamRef = useRef(null); // 마이크 스트림 저장
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
   };
 
-  const handleRecord = () => {
-    // 현재는 녹음 기능 비활성화
+  const stopStreamTrack = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  const handleRecord = async () => {
+    if (recording) {
+      if(mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        // 입력스트림 먼저 종료
+        stopStreamTrack();
+        // 녹음 종료
+        mediaRecorderRef.current.stop();
+      }
+
+      setRecording(false);
+    } else {
+      // 녹음 시작
+      try {
+        // 브라우저의 마이크 접근 권한 요청 
+        // await 을 통해 사용자의 승인까지 기다림 
+        // getUserMedia({audio: true}) -> 접근권한 허용시 오디오입력을 위한 스트림 파이프라인을 가짐
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+        // 스트림으로 가져온 데이터를 가지고 녹음 객체를 생성 (MediaRecorder는 실시간 오디오스트림을 다루는 객체임)
+        const mediaRecorder = new MediaRecorder(stream);
+        // 녹음을 위한 객체는 렌더링마다 새로 만들 필요없으니 ref에 넣음
+        mediaRecorderRef.current = mediaRecorder;
+        // 녹음데이터 
+        audioChunksRef.current = [];
+
+        // 녹음중 데이터 청크(chunk)가 준비 될 때마다 호출되는 이벤트
+        // 데이터가 존재하면 audioChunksRef에 추가 
+        mediaRecorder.ondataavailable = (event) => {
+          // event.data가 Blob 형태의 작은 오디오 데이터 조각을 의미한다. 
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+        
+        // 바로 실행되는게 아님 onstop은 이벤트 핸들러로 MediaRecorder의 stop() 메소드가 호출될때 트리거 된다. 
+        mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" });
+          const audioFile = new File([audioBlob], "recorded_audio.wav", { type: "audio/wav" });
+          setFile(audioFile);
+        };
+
+        mediaRecorder.start();
+        setRecording(true);
+      } catch (err) {
+        console.error("Error accessing microphone:", err);
+      }
+    }
   };
 
   return (
@@ -45,9 +100,17 @@ function AudioUploader({ onSendClick }) {
       {method === "Record" && (
         <button onClick={handleRecord} className="record-btn">
           <FaMicrophone style={{ marginRight: "8px" }} />
-          Record Audio (Coming Soon)
+          {recording ? "Stop Recording" : "Record Audio"}
             
         </button>
+      )}
+
+      {/*  녹음한 오디오 재생 UI */}
+      {file && method === "Record" && (
+        <div style={{ marginTop: "5px", marginBottom: "5px" }}>
+          <p>Recorded audio:</p>
+          <audio controls src={URL.createObjectURL(file)} />
+        </div>
       )}
 
       {/* Send 버튼은 로그인해야 사용가능 하게 비활성화 */}

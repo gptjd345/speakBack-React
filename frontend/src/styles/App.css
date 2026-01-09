@@ -1,7 +1,11 @@
 :root {
+  /*
   --bg-color: #2c2c3e;
   --card-bg: #1e1e1e;
-  --text-color: #f0f0f0;
+  --text-color: #f0f0f0; */
+  --bg-color: white;
+  --card-bg: white;
+  --text-color: black;
   --accent-color: #3b82f6; /* 파란 계열 강조 색 */
   --button-bg: #333333;
   --button-hover: #555555;
@@ -23,9 +27,31 @@ body {
   font-family: 'Helvetica Neue', Arial, sans-serif;
   background-color: var(--bg-color);
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  color: #ffffff;
+  color: black;
   padding: 20px;
   min-height: 300vh;
+}
+
+.intro-box {
+  background-color: white; /* 강조색으로 배경 */
+  color: black;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 15px 20px;
+  text-align: center; /* 제목과 문단 중앙 정렬 */
+  margin-bottom: 20px;
+}
+
+.intro-title {
+  margin: 0 0 8px 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.intro-text {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
 }
 
 .main-content {
@@ -34,7 +60,7 @@ body {
   background-color: var(--card-bg);
   padding: 20px;
   border-radius: 10px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  box-shadow: 0 0 4px rgba(0,0,0,0.5);
 }
 
 .login-warning {

@@ -2,9 +2,6 @@
 # langgraph_config/graph_runner.py
 from .builder import build_graph
 from .store import global_store
-import io
-import base64
-
 # 간단한 state 구조 (필요시 MessagesState 써도 됨)
 class PipelineState(dict):
     pass
@@ -18,7 +15,7 @@ def run_pipeline(audio_file, user_name: str, target_text: str):
         print("DEBUG inputs:", state)
 
         compiled_graph = build_graph()
-        global_store.audio_file = io.BytesIO(audio_file)  # state가 아닌 store에 저장
+        global_store.audio_file = audio_file  # state가 아닌 store에 저장
         global_store.audio_file.seek(0)  # Whisper 등에서 읽기 위해 포인터 처음으로
         global_store.target_text = target_text
 
@@ -30,8 +27,8 @@ def run_pipeline(audio_file, user_name: str, target_text: str):
         result = {
             "user_name": user_name,
             "target_text": target_text,
-            "us_audio": base64.b64encode(getattr(global_store, "tts_us_audio", None)),  # US 튜터 TTS 음성
-            "uk_audio": base64.b64encode(getattr(global_store, "tts_uk_audio", None)),  # UK 튜터 TTS 음성
+            "us_audio": getattr(global_store, "tts_us_audio", None),  # US 튜터 TTS 음성
+            "uk_audio": getattr(global_store, "tts_uk_audio", None),  # UK 튜터 TTS 음성
             "us_feedback": getattr(global_store, "us_feedback", ""), # UK 튜터 피드백
             "uk_feedback": getattr(global_store, "uk_feedback", ""), # UK 튜터 피드백
             "score": getattr(global_store, "score", ""), # 점수

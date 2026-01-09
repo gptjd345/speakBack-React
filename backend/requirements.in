@@ -19,3 +19,4 @@ alembic                # DB 마이그레이션
 bcrypt==4.0.1
 redis>=5.0.0
 pydantic-settings
+pydub

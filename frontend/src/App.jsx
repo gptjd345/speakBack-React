@@ -5,6 +5,9 @@ import LoginModal from "./components/LoginModal";
 import TargetTextInput from "./components/TargetTextInput";
 import { AuthProvider } from "./contexts/AuthContext";
 import { useAuth } from "./contexts/AuthContext";
+import useLangGraph from "./hooks/useLangGraph";
+import ResultViewer from "./components/ResultViewer";
+
 import Home from "./pages/Home";
 import "./styles/App.css";
 import "./styles/Header.css";
@@ -15,7 +18,12 @@ function AppContent() {
   const [showModal, setShowModal] = useState(false);
   const [targetText, setTargetText] = useState("");
   const [showLoginWarning, setShowLoginWarning] = useState(false);
+  const [file, setFile] = useState(null); // file 상태를 부모로 끌어올림
 
+  // langgraph API Hooks
+  const { loading, result, error, runLangGraphProcess } = useLangGraph(); 
+
+  // file upload + excute 
   const handleSendClick = () => {
     if(!user) {
       setShowLoginWarning(true);
@@ -23,6 +31,9 @@ function AppContent() {
       setShowLoginWarning(false);
       // 실제 LangGraph 처리
     }
+
+    // if login OK -> Langgraph execute
+    runLangGraphProcess(file, user, targetText);
   }
 
   // 경고창 자동 사라지게
@@ -46,13 +57,28 @@ function AppContent() {
       <div className={`login-warning ${showLoginWarning ? "show" : "hidden"}`}>
         Please login to access the pronunciation coach.
       </div>
-      
+
+      <div className="intro-box">
+        <h2 className="intro-title">발음 피드백 안내</h2>
+        <p className="intro-text">
+          SpeakBack에 오신 걸 환영합니다! 🎉<br />
+          텍스트를 입력하고 음성을 업로드하면 AI가 발음을 분석하고 피드백을 제공합니다. <br />
+          먼저 로그인하고 시작해 보세요!
+        </p>
+      </div>
+  
       <div className="main-content">
         <h1>Pronunciation Coach 🎤</h1>
         <TargetTextInput value={targetText} onChange={setTargetText} />
+
         <AudioUploader
+          file={file}       // 부모 상태 전달
+          setFile={setFile} // 부모상태 업데이트 함수전달
           onSendClick = {handleSendClick}
         />
+        {loading && <p>Running…</p>}
+        {error && <p>Error: {error}</p>}
+        {result && <ResultViewer data={result} />}
       </div>
 
       {showModal && (

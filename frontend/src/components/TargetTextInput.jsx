@@ -26,9 +26,9 @@ function TargetTextInput({ value, onChange }) {
           width: "100%",
           padding: "10px",
           borderRadius: "8px",
-          border: "1px solid #555",
-          backgroundColor: "#1e1e1e",
-          color: "#f0f0f0",
+          border: "2px solid #ccc", // 약한 회색 테두리
+          backgroundColor: "white",
+          color: "black",
           resize: "none",
           fontSize: "1rem",
         }}
