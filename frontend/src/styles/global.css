@@ -1,0 +1,207 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --white: #ffffff;
+  --off-white: #f8f7f5;
+  --light: #f0eeea;
+  --border: #e2ddd6;
+  --muted: #9e9790;
+  --body: #3d3a35;
+  --dark: #1a1815;
+  --accent: #2563eb;
+  --accent-light: #eff6ff;
+  --accent-hover: #1d4ed8;
+  --success: #16a34a;
+  --warn: #d97706;
+  --danger: #dc2626;
+  --sidebar-w: 240px;
+  --header-h: 60px;
+  --radius: 12px;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.07);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--white);
+  color: var(--body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Layout ─────────────────────────── */
+.sb-root {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.sb-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sb-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Home 등 일반 페이지: 브라우저 우측 끝에 스크롤바 */
+.sb-content--scroll {
+  overflow-y: auto;
+}
+
+/* Coach/Lab: 내부에서 각자 스크롤 처리 */
+.sb-content--fill {
+  overflow: hidden;
+}
+
+/* ─── Shared Buttons ─────────────────── */
+.sb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.84rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+}
+
+.sb-btn-primary {
+  background: var(--accent);
+  color: white;
+}
+.sb-btn-primary:hover { background: var(--accent-hover); }
+.sb-btn-primary:disabled { background: var(--muted); cursor: not-allowed; }
+
+.sb-btn-ghost {
+  background: transparent;
+  color: var(--body);
+  border: 1px solid var(--border);
+}
+.sb-btn-ghost:hover { background: var(--light); }
+
+.sb-btn-lg {
+  padding: 12px 28px;
+  font-size: 0.95rem;
+  border-radius: 10px;
+}
+
+/* ─── Shared Card ────────────────────── */
+.sb-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.sb-card-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ─── Textarea ───────────────────────── */
+.sb-textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.92rem;
+  color: var(--dark);
+  background: var(--off-white);
+  resize: none;
+  min-height: 80px;
+  line-height: 1.5;
+  transition: border-color 0.15s, background 0.15s;
+}
+.sb-textarea:focus { outline: none; border-color: var(--accent); background: var(--white); }
+.sb-textarea::placeholder { color: var(--muted); }
+
+/* ─── Toast ──────────────────────────── */
+.sb-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--dark);
+  color: white;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  box-shadow: var(--shadow-lg);
+  z-index: 300;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.sb-toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+/* ─── Loading Spinner ────────────────── */
+.sb-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.87rem;
+  padding: 16px 0;
+}
+
+.sb-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Section Header ─────────────────── */
+.sb-section-header { margin-bottom: 24px; }
+
+.sb-section-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.35rem;
+  color: var(--dark);
+  margin-bottom: 4px;
+}
+
+.sb-section-sub {
+  font-size: 0.83rem;
+  color: var(--muted);
+}
+
+/* ─── Hidden util ────────────────────── */
+.hidden { display: none; }

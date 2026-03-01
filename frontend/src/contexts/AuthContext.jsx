@@ -1,14 +1,13 @@
-// src/contexts/AuthContext.jsx
 import React, { createContext, useState, useEffect, useContext } from "react";
 import api from "../utils/api";
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null); // 로그인한 사용자 정보
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 앱 첫 로드 시 1회만 /api/me 호출
+  // 앱 첫 로드 시 세션 확인
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -20,7 +19,6 @@ export const AuthProvider = ({ children }) => {
           setUser(res.data.user);
           console.log("##### /api/auth/me localStorage 통과여부 : ", res.data.access_key);
         }
-     
       } catch {
         setUser(null); // 로그인 안 된 상태
       } finally {
@@ -30,7 +28,22 @@ export const AuthProvider = ({ children }) => {
     fetchUser();
   }, []);
 
-  // 로그인/로그아웃 후에도 상태를 갱신할 수 있도록 helper 제공
+  // 로그인 데이터를 전역으로 저장
+  const login = (userData) => {
+    if(!userData) return;
+    setUser(userData);
+  };
+
+  const logout = async () => {
+    try {
+      await api.post("/api/auth/logout");
+    } catch {
+      // 로그아웃 실패해도 클라이언트 상태는 초기화
+    }
+    setUser(null);
+    localStorage.removeItem("access_key");
+  };
+
   const refreshUser = async () => {
     try {
         const res = await api.post("/api/auth/me");
@@ -40,22 +53,6 @@ export const AuthProvider = ({ children }) => {
     } catch {
       setUser(null);
     }
-  };
-
-  // 로그인 데이터를 전역으로 저장
-  const login = (userData) => {
-    if(!userData) return;
-
-    setUser(userData);
-    console.log("user->", userData);
-
-  };
-
-  const logout = async () => {
-    await api.post("/api/auth/logout");
-    setUser(null);
-    // 로컬스토리지/세션스토리지에서 토큰 제거
-    localStorage.removeItem("access_key");
   };
 
   return (

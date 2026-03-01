@@ -1,0 +1,115 @@
+/* ─── Coach Layout ───────────────────── */
+.sb-coach-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sb-coach-main {
+  overflow-y: auto;
+  padding: 32px;
+  border-right: 1px solid var(--border);
+}
+
+.sb-send-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.sb-send-error {
+  font-size: 0.82rem;
+  color: var(--danger);
+}
+
+.sb-results { margin-top: 24px; }
+
+/* ─── History Panel ──────────────────── */
+.sb-coach-history {
+  overflow-y: auto;
+  background: var(--off-white);
+  padding: 20px;
+}
+
+.sb-history-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1rem;
+  color: var(--dark);
+  margin-bottom: 4px;
+}
+
+.sb-history-sub {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.sb-history-empty {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--muted);
+  font-size: 0.83rem;
+  line-height: 1.6;
+}
+
+.sb-history-empty-icon {
+  font-size: 2rem;
+  margin-bottom: 10px;
+}
+
+/* ─── History Item ───────────────────── */
+.sb-history-item {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.sb-history-item:hover {
+  box-shadow: var(--shadow-sm);
+  border-color: var(--accent);
+}
+
+.sb-history-item.selected {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+
+.sb-history-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+
+.sb-history-text {
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: var(--dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+.sb-history-score {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-light);
+  border: 1px solid #bfdbfe;
+  padding: 1px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.sb-history-date {
+  font-size: 0.73rem;
+  color: var(--muted);
+}

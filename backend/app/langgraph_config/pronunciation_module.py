@@ -184,6 +184,15 @@ def evaluate_pronunciation(target_text: str, user_audio_path: str, tutor_type: s
         - If the learner’s speech is generally understandable, the minimum score should be 70.
         - Only if the speech is completely unintelligible, give below 50.
 
+    IMPORTANT STRENGTHS RULES:
+        - "strengths" must ONLY include content words (nouns, verbs, adjectives, adverbs)
+          that were pronounced clearly and confidently.
+        - NEVER include function words (articles: a, an, the / prepositions: to, on, in, at, of /
+          conjunctions: and, but, or / auxiliaries: is, was, do, have) in "strengths".
+        - Natural contractions (I'm, don't, gonna) are the ONLY exception — include them
+          if the learner used them naturally.
+        - Each entry should be the word itself, optionally with a brief note.    
+
     example response:
     {
       "score": 87.5,

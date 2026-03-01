@@ -1,19 +1,29 @@
 import React, { useState, useRef } from "react";
 import "../styles/AudioUploader.css";
-import { FaMicrophone, FaPaperPlane } from "react-icons/fa"; // 아이콘 import
 
 function AudioUploader({ file, setFile, onSendClick }) {
   const [method, setMethod] = useState("Upload"); // 업로드/녹음 선택
   const [recording, setRecording] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null); // 마이크 스트림 저장
+  const fileInputRef = useRef(null);
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
   };
 
-  const stopStreamTrack = () => {
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const dropped = e.dataTransfer.files[0];
+    if (dropped && dropped.type.startsWith("audio/")) setFile(dropped);
+  };
+
+  // ─── Recording ─────────────────────────────────────────────────
+  const stopStream = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -22,22 +32,20 @@ function AudioUploader({ file, setFile, onSendClick }) {
 
   const handleRecord = async () => {
     if (recording) {
+      stopStream(); // 입력스트림 먼저 종료
       if(mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-        // 입력스트림 먼저 종료
-        stopStreamTrack();
-        // 녹음 종료
-        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stop(); // 녹음 종료
       }
-
       setRecording(false);
+    // 녹음 시작
     } else {
-      // 녹음 시작
       try {
         // 브라우저의 마이크 접근 권한 요청 
         // await 을 통해 사용자의 승인까지 기다림 
         // getUserMedia({audio: true}) -> 접근권한 허용시 오디오입력을 위한 스트림 파이프라인을 가짐
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         streamRef.current = stream;
+
         // 스트림으로 가져온 데이터를 가지고 녹음 객체를 생성 (MediaRecorder는 실시간 오디오스트림을 다루는 객체임)
         const mediaRecorder = new MediaRecorder(stream);
         // 녹음을 위한 객체는 렌더링마다 새로 만들 필요없으니 ref에 넣음
@@ -69,59 +77,83 @@ function AudioUploader({ file, setFile, onSendClick }) {
     }
   };
 
+  // ─── Render ────────────────────────────────────────────────────
   return (
-    <div className="audio-uploader" style={{ marginTop: "50px"}}>
-      {/* 파일업로드 추가 시 이거 사용 <h4>Upload or Record Your Voice</h4> */}
-      <h4>Record Your Voice</h4>
-      
-      {/* 입력 선택 영역 */}
-      <div className="input-method-container">
-        <label style={{ marginBottom: "5px", fontWeight: "500" }}>
-          Choose input method:
-        </label>
-        <select
-          value={method}
-          onChange={(e) => setMethod(e.target.value)}
-          style={{ marginLeft:"5px", padding: "6px 10px", borderRadius: "5px", border: "1px solid #555" }}
+    <div>
+      {/* Method Tabs */}
+      <div className="sb-audio-tabs">
+        <button
+          className={`sb-audio-tab ${method === "upload" ? "active" : ""}`}
+          onClick={() => setMethod("upload")}
         >
-          <option value="Upload">Upload Audio File</option>
-          <option value="Record">Record Audio</option>
-        </select>
+          📂 Upload
+        </button>
+        <button
+          className={`sb-audio-tab ${method === "record" ? "active" : ""}`}
+          onClick={() => setMethod("record")}
+        >
+          🎙 Record
+        </button>
       </div>
 
-      {/* 조건부 렌더링 */}
-      {method === "Upload" && (
+      {/* Upload Mode */}
+      {method === "upload" && (
         <>
-          <input type="file" accept="audio/*" onChange={handleFileChange} />
-          {file && <p>Selected file: {file.name}</p>}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="audio/*"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          {file ? (
+            <div className="sb-file-selected">
+              🎵 <span>{file.name}</span>
+              <button
+                className="sb-file-selected-clear"
+                onClick={() => setFile(null)}
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <div
+              className={`sb-file-drop ${dragOver ? "drag-over" : ""}`}
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+            >
+              <div className="sb-file-drop-icon">🎵</div>
+              <div className="sb-file-drop-text">
+                <strong>Click to upload</strong> or drag and drop
+                <br />
+                <span>MP3, WAV, M4A up to 25MB</span>
+              </div>
+            </div>
+          )}
         </>
       )}
 
-      {/* 녹음 버튼 */}
-      {method === "Record" && (
-        <button onClick={handleRecord} className="record-btn">
-          <FaMicrophone style={{ marginRight: "8px" }} />
-          {recording ? "Stop Recording" : "Record Audio"}
-            
-        </button>
+      {/* Record Mode */}
+      {method === "record" && (
+        <>
+          <button
+            className={`sb-record-btn ${recording ? "recording" : ""}`}
+            onClick={handleRecord}
+          >
+            <div className="sb-rec-dot" />
+            {recording ? "Stop recording" : "Start recording"}
+          </button>
+
+          {file && !recording && (
+            <div className="sb-audio-preview">
+              <div className="sb-audio-preview-label">Preview:</div>
+              <audio controls src={URL.createObjectURL(file)} />
+            </div>
+          )}
+        </>
       )}
-
-      {/*  녹음한 오디오 재생 UI */}
-      {file && method === "Record" && (
-        <div style={{ marginTop: "5px", marginBottom: "5px" }}>
-          <p>Recorded audio:</p>
-          <audio controls src={URL.createObjectURL(file)} />
-        </div>
-      )}
-
-      {/* Send 버튼은 로그인해야 사용가능 하게 비활성화 */}
-      <button 
-        className="send-btn" 
-        onClick={onSendClick}>
-        <FaPaperPlane style={{ marginRight: "8px" }} />
-        Send to LangGraph
-      </button>
-
 
     </div>
   );

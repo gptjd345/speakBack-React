@@ -1,19 +1,22 @@
 import React from "react";
+import { useAuth } from "../contexts/AuthContext";
 import "../styles/Header.css";
 
-function Header({ isLoggedIn, onLoginClick, onLogoutClick }) {
-  console.log("Header - isLoggedIn:", isLoggedIn); // 로그인 상태 확인용
+const PAGE_TITLES = {
+  home:  "SpeakBack",
+  coach: "Pronunciation Coach",
+  lab:   "Practice Lab",
+};
+
+function Header({ page, onLoginClick, onLogoutClick }) {
+  const { user } = useAuth();
   return (
-    <header className="header">
-      <div className="logo">SpeakBack</div>
-      <div>
-        {isLoggedIn ? (
-          <button className="login-btn" onClick={onLogoutClick}>
-            Logout
-          </button>
-        ) : (
-          <button className="login-btn" onClick={onLoginClick}>
-            Login
+    <header className="sb-header">
+      <div className="sb-header-title">{PAGE_TITLES[page] || "SpeakBack"}</div>
+      <div className="sb-header-actions">
+        {!user && (
+          <button className="sb-btn sb-btn-primary" onClick={onLoginClick}>
+            Sign in
           </button>
         )}
       </div>

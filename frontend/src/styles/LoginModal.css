@@ -1,80 +1,115 @@
-/* LoginModal.css */
-.modal-overlay {
+.sb-modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0,0,0,0.5);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(4px);
   display: flex;
-  justify-content: center;
   align-items: center;
-  z-index: 1000;
+  justify-content: center;
+  z-index: 200;
 }
 
-.modal {
-  background: #1e1e2f; /* 어두운 배경 */
-  color: #fff;
-  padding: 30px;
-  border-radius: 12px;
-  width: 360px;
-  max-width: 90%;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.4);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.sb-modal {
+  background: var(--white);
+  border-radius: 16px;
+  padding: 36px;
+  width: 380px;
+  max-width: 92vw;
+  box-shadow: var(--shadow-lg);
   position: relative;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.close-btn {
+.sb-modal-close {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  background: transparent;
-  color: black;
+  top: 14px;
+  right: 14px;
+  background: var(--light);
   border: none;
-  font-size: 18px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
   cursor: pointer;
-}
-
-.modal form {
+  font-size: 0.85rem;
+  color: var(--muted);
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.sb-modal-close:hover { background: var(--border); }
+
+.sb-modal-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.5rem;
+  color: var(--dark);
+  margin-bottom: 4px;
 }
 
-.modal input[type="text"],
-.modal input[type="password"],
-.modal input[type="email"] {
-  padding: 10px;
+.sb-modal-sub {
+  font-size: 0.83rem;
+  color: var(--muted);
+  margin-bottom: 24px;
+}
+
+/* ─── Tabs ───────────────────────────── */
+.sb-modal-tabs {
+  display: flex;
+  background: var(--light);
+  border-radius: 8px;
+  padding: 3px;
+  margin-bottom: 20px;
+}
+
+.sb-modal-tab {
+  flex: 1;
+  padding: 7px;
   border-radius: 6px;
   border: none;
-  background: #2c2c3e;
-  color: #fff;
-}
-
-.modal input[type="text"]::placeholder,
-.modal input[type="password"]::placeholder,
-.modal input[type="email"]::placeholder {
-  color: #bbb;
-}
-
-.modal button[type="submit"] {
-  padding: 10px;
-  border: none;
-  border-radius: 6px;
-  background-color: #4f90ff;
-  color: #fff;
-  font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: transparent;
+  color: var(--muted);
+  transition: all 0.15s;
 }
 
-.modal button[type="submit"]:hover {
-  background-color: #3577e6;
+.sb-modal-tab.active {
+  background: var(--white);
+  color: var(--dark);
+  box-shadow: var(--shadow-sm);
 }
 
-.modal label {
-  margin-right: 15px;
+/* ─── Input ──────────────────────────── */
+.sb-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.9rem;
+  color: var(--dark);
+  background: var(--off-white);
+  margin-bottom: 10px;
+  transition: border-color 0.15s;
+}
+
+.sb-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--white);
+}
+
+.sb-input::placeholder { color: var(--muted); }
+
+.sb-modal-error {
+  font-size: 0.82rem;
+  color: var(--danger);
+  margin-bottom: 10px;
+}
+
+.sb-modal-submit {
+  width: 100%;
+  padding: 10px;
+  font-size: 0.92rem;
 }

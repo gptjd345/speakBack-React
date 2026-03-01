@@ -19,6 +19,7 @@ export default function useLangGraph() {
     try {
       const response = await runLangGraphRequest(file, user, targetText);
       setResult(response);
+      return response; // caller가 직접 쓸 수 있도록 반환
     } catch (err) {
       setError(err.message || "Unknown error occurred");
     } finally {

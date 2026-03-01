@@ -1,47 +1,141 @@
-.audio-uploader {
+/* ─── Method Tabs ────────────────────── */
+.sb-audio-tabs {
   display: flex;
-  flex-direction: column;
+  background: var(--light);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+  margin-bottom: 16px;
+  width: fit-content;
+}
+
+.sb-audio-tab {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  transition: all 0.15s;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.sb-audio-tab.active {
+  background: var(--white);
+  color: var(--dark);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ─── File Drop Zone ─────────────────── */
+.sb-file-drop {
+  border: 1.5px dashed var(--border);
+  border-radius: 8px;
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.sb-file-drop:hover,
+.sb-file-drop.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+
+.sb-file-drop-icon {
+  font-size: 1.8rem;
+  margin-bottom: 8px;
+}
+
+.sb-file-drop-text {
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.sb-file-drop-text strong { color: var(--accent); }
+
+/* ─── Selected File ──────────────────── */
+.sb-file-selected {
+  display: flex;
+  align-items: center;
   gap: 10px;
-  color: black;
+  background: var(--accent-light);
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  color: var(--accent);
+  font-weight: 500;
 }
 
-.audio-uploader input[type="file"] {
-  border-radius: 6px;
-  padding: 8px;
-  background: #555;
-  color: #fff;
+.sb-file-selected-clear {
+  margin-left: auto;
+  background: none;
   border: none;
-}
-
-.audio-uploader button {
-  padding: 10px;
-  border-radius: 6px;
-  border: none;
-  font-weight: 600;
-  min-width: 120px;
-}
-
-.audio-uploader .record-btn{
-  background-color: #b94e4e;  
-  color: #ccc;
   cursor: pointer;
+  color: var(--accent);
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
 }
 
-.input-method-container{
-  display: "flex";
-  flex-direction: "column";
-  align-items: flex-start;
-  width: "50%"; /* 화면의 절반 */
-}
-
-.send-btn {
-  background-color: #4f90ff;
-  color: #fff;
+/* ─── Record Button ──────────────────── */
+.sb-record-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
   cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.88rem;
+  font-weight: 500;
+  transition: all 0.15s;
+  background: #fef2f2;
+  color: var(--danger);
 }
 
-.send-btn:disabled {
-  background-color: #555;
-  color: #ccc;
-  cursor: not-allowed;
+.sb-record-btn.recording {
+  background: var(--danger);
+  color: white;
+  border-color: var(--danger);
+  animation: pulse-btn 1.5s infinite;
+}
+
+@keyframes pulse-btn {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.3); }
+  50%       { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+
+.sb-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.sb-record-btn.recording .sb-rec-dot {
+  animation: blink 1s infinite;
+}
+
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ─── Recorded Preview ───────────────── */
+.sb-audio-preview {
+  margin-top: 12px;
+}
+
+.sb-audio-preview-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.sb-audio-preview audio {
+  width: 100%;
+  height: 36px;
 }

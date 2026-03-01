@@ -1,11 +1,13 @@
-import React, { useState, useRef, useEffect } from "react";
-import "../styles/TargetTextInput.css";
+import React, { useRef, useEffect } from "react";
+
+// 별도 CSS 없이 글로벌 변수와 인라인 스타일 조합 사용
+// (sb-textarea 클래스는 global.css 에 정의)
 
 function TargetTextInput({ value, onChange }) {
   const textareaRef = useRef(null);
 
+   // 내용에 맞게 높이 조절
   useEffect(() => {
-    // 내용에 맞게 높이 조절
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto"; // 초기화
       textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
@@ -13,27 +15,13 @@ function TargetTextInput({ value, onChange }) {
   }, [value]);
 
   return (
-    <div className="target-text-input" >
-      <label style={{ fontWeight: "500", marginBottom: "5px", display: "block" }}>
-        Enter the target sentence:
-      </label>
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="Type your sentence here..."
-        style={{
-          width: "100%",
-          padding: "10px",
-          borderRadius: "8px",
-          border: "2px solid #ccc", // 약한 회색 테두리
-          backgroundColor: "white",
-          color: "black",
-          resize: "none",
-          fontSize: "1rem",
-        }}
-      />
-    </div>
+    <textarea
+      ref={textareaRef}
+      className="sb-textarea"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder="Type the sentence you want to practice…"
+    />
   );
 }
 

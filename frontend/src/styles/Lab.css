@@ -1,0 +1,36 @@
+.sb-lab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--muted);
+}
+
+.sb-lab-icon { font-size: 3rem; }
+
+.sb-lab-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.5rem;
+  color: var(--dark);
+}
+
+.sb-lab-sub {
+  font-size: 0.9rem;
+  max-width: 340px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.sb-lab-pill {
+  background: var(--light);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 16px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}

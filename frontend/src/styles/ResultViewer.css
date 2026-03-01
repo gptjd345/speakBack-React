@@ -1,0 +1,120 @@
+.sb-result-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ─── Header ─────────────────────────── */
+.sb-result-header {
+  background: linear-gradient(135deg, var(--accent) 0%, #1d4ed8 100%);
+  padding: 20px 24px;
+  color: white;
+}
+
+.sb-result-score-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sb-result-label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  opacity: 0.8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.sb-result-name {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.2rem;
+}
+
+.sb-result-target {
+  margin-top: 12px;
+  font-size: 0.82rem;
+  opacity: 0.7;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+/* ─── Score Ring ─────────────────────── */
+.sb-score-ring {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.sb-score-num {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.sb-score-sub {
+  font-size: 0.65rem;
+  opacity: 0.8;
+}
+
+/* ─── Body ───────────────────────────── */
+.sb-result-body { padding: 20px 24px; }
+
+.sb-result-section { margin-bottom: 20px; }
+
+.sb-result-section-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb-result-section-title.good { color: var(--success); }
+.sb-result-section-title.warn { color: var(--warn); }
+.sb-result-section-title.info { color: var(--accent); }
+
+.sb-result-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-result-list li {
+  font-size: 0.87rem;
+  color: var(--body);
+  background: var(--off-white);
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  gap: 8px;
+  line-height: 1.45;
+}
+
+.sb-rhythm-box {
+  background: var(--off-white);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 0.87rem;
+  color: var(--body);
+  line-height: 1.55;
+  border-left: 3px solid var(--accent);
+}
+
+.sb-result-audio {
+  width: 100%;
+  margin-top: 8px;
+}
