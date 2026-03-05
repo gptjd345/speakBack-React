@@ -15,9 +15,10 @@ function LoginModal({ onClose, onLogin }) {
 
   const performLogin = async (username, password) => {
     const res = await api.post("/api/auth/login", { username, password });
-    if (res.data.access_key && res.data.access_key !== "undefined") {
-      localStorage.setItem("access_key", res.data.access_key);
-    }
+    
+    localStorage.setItem("access_token", res.data.access_token);
+    localStorage.setItem("refresh_token", res.data.refresh_token);
+
     return res.data.user;
   };
 
@@ -27,7 +28,7 @@ function LoginModal({ onClose, onLogin }) {
     setError("");
   
     try {
-      if (tab === "Register") {
+      if (tab === "register") {
         // FastAPI 백엔드로 회원가입 요청
         await api.post("/api/auth/register", {
           username: form.username,

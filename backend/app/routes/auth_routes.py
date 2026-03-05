@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from app.db import schemas, models, database
-from app.core import auth, security
+from app.core import security
 from app.core.redis import redis_client
 from uuid import uuid4
 import json
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 router = APIRouter()
 get_db = database.SessionLocal
@@ -21,187 +22,228 @@ def get_db():
 
 ACCESS_TTL = 60 * 30  # 30분
 
+
+RefreshToken = models.RefreshToken
+
 @router.post("/register")
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    hashed = auth.hash_password(user.password)
+
+    # 1. 중복 체크
+    existing = db.query(models.User).filter(
+        (models.User.username == user.username) | 
+        (models.User.email == user.email)
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Username or email already exists")
+    
+    # 2. 회원데이터 저장
+    hashed = security.hash_password(user.password)
     db_user = models.User(username=user.username, email=user.email, password=hashed)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return {"id": db_user.id, "username": db_user.username, "email": db_user.email}
 
-@router.post("/logout")
-def logout(request: Request, db: Session = Depends(get_db)):
-        # 1. 헤더에서 access_key 확인 (로컬 테스트용)
-    access_key = request.headers.get("X-Access-Key")
+@router.post("/logout") # 완
+def logout(
+    request: Request, db: Session = Depends(get_db)
+):  
+    # 운영: 쿠키에서 추출
+    """
+    refresh_token = request.cookies.get("refresh_token")
+    """
 
-    # 1. 헤더에서 access_key 확인 (운영용)
-    #access_key = request.cookies.get("access_key") 이후 쿠키 사용시 주석해제한다.
+    # 로컬: 헤더에서 추출
+    refresh_token = request.headers.get("X-Refresh-Token")
 
-    session_data = redis_client.get(f"access_key:{access_key}")
-    if session_data:
-        data = json.loads(session_data)
-        user_id = data.get("user_id")
-        redis_client.delete(f"access_key:{access_key}")
+    # 1. refresh 토큰 서명 검증
+    try:
+        refresh_payload = security.decode_refresh_token(refresh_token)
+    # 만료되거나 서명검증 오류의 경우 메시지만 리턴    
+    except HTTPException:
+        return {"msg": "Logged out"}
 
-        db_user = db.query(models.User).get(user_id)
-        # if refresh_token exist, delete
-        if db_user:
-            db_user.refresh_token = None
-            db.commit()
+    # 2. DB에서 refresh 토큰 찾기
+    db_refresh = db.query(RefreshToken).filter(
+        RefreshToken.jti == refresh_payload["jti"]
+    ).first()
 
-    redis_client.delete(access_key)
-    print(f"### Redis session deleted: {access_key}")        
+    # 3. revoked 된 날짜 저장
+    if db_refresh:
+        db_refresh.revoked_at = datetime.utcnow()
+        db.commit()
 
+    # 토큰이 없어도 그냥 종료(토큰유무를 굳이 알릴필요없음)
     return {"msg": "Logged out"}
+               
 
-@router.post("/login")
+@router.post("/login") # 완
 def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.username == user.username).first()
-    if not db_user or not auth.verify_password(user.password, db_user.password):
+    # 1. 유저 확인
+    db_user = db.query(models.User).filter(
+        models.User.username == user.username
+    ).first()
+
+    if not db_user or not security.verify_password(user.password, db_user.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    # JWT create (core/security.py)
-    access_token = security.create_access_token({"user_id": db_user.id})
-    refresh_token = security.create_refresh_token({"user_id": db_user.id})
+    # 2. token_version Redis에 캐시 (이후 /me는 DB 조회 없음)
+    redis_client.set(f"token_version:{db_user.id}", db_user.token_version)
 
-    # Store refresh_token to DB
-    db_user.refresh_token = refresh_token
-    db.commit()
-    db.refresh(db_user)
-
-    print("#### Redis ping test: ", redis_client.ping())  # True 나오면 연결 정상
-
-    # access_key 생성 + Redis 저장 TTL 30 min
-    access_key = str(uuid4())
- 
-    redis_client.set(
-        f"access_token:{access_key}", 
-        json.dumps({"user_id": db_user.id, "access_token": access_token}), 
-        ex=ACCESS_TTL
+    # 3. 토큰 생성
+    access_token = security.create_access_token(
+        user_id=db_user.id,
+        token_version=db_user.token_version,
+        username=db_user.username,
+        email=db_user.email,
+    )
+    refresh_token, jti, expire = security.create_refresh_token(
+        user_id=db_user.id,
+        token_version=db_user.token_version
     )
 
-    # access_key: str, user: dict
-    return create_access_response(
-        access_key = access_key,
-        user = {"id": db_user.id, "username": db_user.username, "email": db_user.email}
-    ) 
+    # 4. Srefresh_token data 저장
+    refresh_entity = RefreshToken(
+        user_id=db_user.id,
+        jti=jti,
+        expires_at=expire
+    )
+
+    db.add(refresh_entity)
+    db.commit()
+    
+    # 응답 반환 (access + refresh 둘 다 반환)
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "user": {
+            "username": db_user.username,
+            "email": db_user.email
+        }
+    }
+
+# me 요청
+# 토큰 디코딩 -> token version 확인 -> 응답반환(DB 호출없음)
+@router.post("/me")
+def get_current_user(request: Request):
+
+    # 운영: 쿠키에서 토큰 추출
+    """
+    access_token = request.cookies.get("access_token")  # 운영 (httpOnly 쿠키)
+    
+    """
+    #로컬: Authorization 헤더에서 토큰 추출
+    access_token = request.headers.get("Authorization", "").replace("Bearer ", "")  # 로컬
+    
+    # 1. 토큰 디코딩
+    try:
+        access_payload = security.decode_access_token(access_token)
+    except HTTPException:
+        raise HTTPException(status_code=401, detail="Invalid access token")
+    
+    user_id = access_payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    
+    # 2. payload의 token version 과 레디스에 캐시해놓은 token version이 동일한지 확인
+    redis_version = redis_client.get(f"token_version:{user_id}")
+    token_version = access_payload.get("token_version")
+
+    # 3. 레디스 
+    if redis_version is None:
+        # Redis에 없으면 → 로그인 필요 (재로그인 유도)
+        raise HTTPException(status_code=401, detail="Session not found")
+
+    if int(redis_version) != token_version:
+        raise HTTPException(status_code=401, detail="Token invalidated")
+
+
+    # 응답 반환 (access + refresh 둘 다 반환)
+    return {
+        "user": {
+            "id": access_payload.get("sub"),
+            "username": access_payload.get("username"),
+            "email": access_payload.get("email"),
+        }
+    }
 
 @router.post("/refresh")
-def refresh(access_key: str, db: Session = Depends(get_db)):
-    session_data = redis_client.get(f"access:{access_key}")
-    if not session_data:
+def refresh(request: Request, db: Session = Depends(get_db)):
+    # 운영: 쿠키에서 추출
+    """
+    refresh_token = request.cookies.get("refresh_token")
+    """
+
+    # 로컬: 헤더에서 추출
+    refresh_token = request.headers.get("X-Refresh-Token")
+    
+    # 1. refresh token 서명 검증
+    try:
+        refresh_payload = security.decode_refresh_token(refresh_token)
+    except HTTPException:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
+    
+    jti = refresh_payload.get("jti")
+    user_id = refresh_payload.get("sub")
 
-    data = json.loads(session_data)
-    user_id = data.get("user_id")
-    db_user = db.query(models.User).get(user_id)
+    # 2. DB에서 refresh token 찾기
+    db_refresh = db.query(RefreshToken).filter(
+        RefreshToken.jti == jti
+    ).first()
 
-    if not db_user or not db_user.refresh_token:
-        raise HTTPException(status_code=401, detail="Login required")
+    # 3. Refresh Token Rotation - 이미 사용됬거나 revoke된 토큰이면
+    # 탈취 가능성 있으므로 해당 유저의 모든 refresh token revoke
+    if not db_refresh or db_refresh.revoked_at is not None:
+        # refresh 테이블에서 모든 세션을 revoke 처리
+        db.query(RefreshToken).filter(
+            RefreshToken.user_id == user_id
+        ).update({"revoked_at": datetime.utcnow()})
 
-    if not security.verify_token(db_user.refresh_token):
-        raise HTTPException(status_code=401, detail="Refresh token expired")
+        # 살아있는 access token도 version 불일치로 즉시 차단
+        db.query(models.User).filter(
+            models.User.id == user_id
+        ).update({"token_version": models.User.token_version + 1})
+        db.commit()
+        raise HTTPException(status_code=401, detail="Token reuse detected")
 
-    # 새 access token 발급
-    new_access_token = security.create_access_token({"user_id": user_id})
-    new_access_key = str(uuid4())
-    redis_client.set(
-        f"access:{new_access_key}",
-        json.dumps({"user_id": user_id, "access_token": new_access_token}),
-        ex=ACCESS_TTL
+    # 4. 유저 조회 (payload의 userid로 찾기)
+    db_user = db.query(models.User).filter(
+        models.User.id == user_id
+    ).first()
+    if not db_user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    # 5. 기존 refresh token revoke
+    db_refresh.revoked_at = datetime.utcnow()
+
+    # 6. 새 토큰 발급
+    new_access_token = security.create_access_token(
+        user_id=db_user.id,
+        token_version=db_user.token_version,
+        username=db_user.username,
+        email=db_user.email,
+    )
+    new_refresh_token, new_jti, new_expire = security.create_refresh_token(
+        user_id=db_user.id,
+        token_version=db_user.token_version
     )
 
-    # access_key: str, user: dict
-    return create_access_response(
-        access_key = new_access_key,
-        user = {"id": db_user.id, "username": db_user.username, "email": db_user.email}
-    ) 
+    # 7. 새 refresh token DB 저장
+    db.add(RefreshToken(
+        user_id=db_user.id,
+        jti=new_jti,
+        expires_at=new_expire
+    ))
+    db.commit()
 
-class AccessKeyPayload(BaseModel):
-    access_key: Optional[str] = None
-
-@router.post("/me")
-def get_current_user(request: Request, db: Session = Depends(get_db)):
-    # 목적 : 현재 로그인된 사용자의 정보만 조회
-    # 과정 
-    # if access 키가 존재하는 경우 
-        # access 키를 이용해 access토큰을 레디스에서 조회 
-            # if access 토큰이 존재하는 경우 
-                # 토큰 검증 
-                    # 성공시 토큰에서 사용자 id를 뽑아서 db 조회후 사용자로그인정보를 리턴
-                    # 실패시 토큰 변조로 무조건 실패 처리 후 종료
-            # else access 토큰이 존재하지 않는경우
-                # access 키에 존재하는 사용자 id 를 이용해 db 조회해서 refresh 토큰 존재여부 확인 
-                    # refresh 토큰이 존재하는 경우 JWT 디코딩 검증(verify_token) 만료된 refresh 토큰도 통과할 가능성이 있기 때문
-                    # 검증성공시 이미 가지고 있던 id를 활용해서 access 토큰을 생성해서 레디스에 저장하고 사용자 정보 조회해서 리턴
-
-                    # refresh 토큰이 존재하지 않는 경우 그냥 로그인이 안된거라 데이터 리턴 할거 없으니 종료 
-                     
-    # else access 키가 없는 경우 
-        # 로그인이 안되있음으로 인식
-    # 1. 헤더에서 access_key 확인 (로컬 테스트용)
-    access_key = request.headers.get("X-Access-Key")
-
-    # 1. 헤더에서 access_key 확인 (운영용)
-    #access_key = request.cookies.get("access_key") 이후 쿠키 사용시 주석해제한다.
-    print("### /api/auth/me cookies.get : access_key:", access_key)
-
-    # 1. access_key 존재 여부 확인
-    if not access_key or access_key == "undefined":
-        return {"user": None}
-    
-    # 2. Redis에서 access token 조회 및 검증 
-    session_data = redis_client.get(f"access_token:{access_key}")
-    print("### /api/auth/me session_data : session_data:", session_data)
-    if session_data:
-        try:
-            data = json.loads(session_data)
-            payload = security.verify_token(data["access_token"])
-            user_id = payload.get("user_id")
-            if not user_id:
-                return {"user": None}
-            
-            user = db.query(models.User).get(user_id)
-            if not user:
-                return {"user": None}
-            
-            # access_key: str, user: dict
-            return create_access_response(
-                access_key = access_key,
-                user = {"id": user.id, "username": user.username, "email": user.email}
-            ) 
-        except Exception as e:
-            print("### /me exception:", e)
-            return {"user": None}
-
-    # 3. refresh token 확인 및 검증(access_key는 있는데 레디스에 access token이 없는경우)
-    # (현업에서는 fresh_token 매핑 테이블을 따로 두는 경우가 많음 -> 일단 이건 추후)
-    data = json.loads(session_data)
-    user_id = data.get("user_id")
-    db_user = db.query(models.User).get(user_id)
-    if not db_user or not db_user.refresh_token:
-        return {"user": None}
-
-    # refresh token 검증
-    if not security.verify_token(db_user.refresh_token):
-        return {"user": None}
-
-    # 4. 새 access token 발급
-    new_access_token = security.create_access_token({"user_id": user_id})
-    new_access_key = str(uuid4())
-    redis_client.set(
-        f"access_token:{new_access_key}", 
-        json.dumps({
-        "user_id": user_id,
-        "access_token": new_access_token
-    }), ex=ACCESS_TTL)
-
-    # access_key: str, user: dict
-    return create_access_response(
-        access_key = new_access_key,
-        user = {"id": db_user.id, "username": db_user.username, "email": db_user.email}
-    ) 
+    return {
+        "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
+        "user": {
+            "username": db_user.username,
+            "email": db_user.email
+        }
+    }
    
 def create_access_response(access_key: str, user: dict):
     """
