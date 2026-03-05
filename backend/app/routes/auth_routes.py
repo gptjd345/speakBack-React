@@ -20,9 +20,6 @@ def get_db():
     finally:
         db.close()
 
-ACCESS_TTL = 60 * 30  # 30분
-
-
 RefreshToken = models.RefreshToken
 
 @router.post("/register")

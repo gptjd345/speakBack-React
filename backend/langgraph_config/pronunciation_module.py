@@ -69,9 +69,7 @@ def stt_vosk(user_audio_path: str) :
     """사용자 음성파일을 Vosk STT로 변환"""
     audio_stream = prepare_audio_for_vosk(user_audio_path)
 
-    # Vosk recognizer 초기화
-    model = Model(VOSK_MODEL_PATH)
-    rec = KaldiRecognizer(model, 16000)
+    rec = KaldiRecognizer(vosk_model, 16000)
     rec.SetWords(True)
 
     # wav header skip 필요 → wave 모듈 사용 X, raw bytes 그대로 처리
