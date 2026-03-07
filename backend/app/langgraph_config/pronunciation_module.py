@@ -1,8 +1,11 @@
 from .store import global_store
-import re
-from typing import Optional, Dict
 
-from vosk import Model, KaldiRecognizer
+import hashlib
+import base64
+
+from concurrent.futures import ThreadPoolExecutor
+import time
+
 import wave, json, os
 
 from pydub import AudioSegment, silence
@@ -10,18 +13,15 @@ import io
 import subprocess
 
 from openai import OpenAI
-from app.core.tts_manager import get_us_tts
+from app.core.redis import redis_client
 
 def get_client():
     return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # ----------------------------------------------------
-# Call AI 
+# Call AI (GPT 평가)
 # ----------------------------------------------------
 def call_ai(system_prompt: str, user_prompt: str) -> str:
-    """
-    GPT 기반 평가 호출
-    """
     client = get_client()
     response = client.chat.completions.create(
         model="gpt-4o-mini",   # 빠른 피드백용
@@ -36,12 +36,10 @@ def call_ai(system_prompt: str, user_prompt: str) -> str:
     return response.choices[0].message.content
 
 # ----------------------------------------------------
-# Audio data preprocessing (BytesIO → 16kHz mono wav)
+# Audio data preprocessing (ffmpeg → 16kHz mono wav)
+# 다양한 디바이스/브라우저 녹음 포맷을 통일하여 STT 정확도 안정화
 # ----------------------------------------------------
-def prepare_audio_for_vosk(org_file_path) -> io.BytesIO:
-    """
-    Streamlit BytesIO / UploadedFile → Vosk에서 쓸 수 있는 16kHz mono wav로 변환
-    """
+def prepare_audio_for_whisper(org_file_path) -> io.BytesIO:
     process = subprocess.run(
         [
             "ffmpeg",
@@ -57,41 +55,34 @@ def prepare_audio_for_vosk(org_file_path) -> io.BytesIO:
     )
     return io.BytesIO(process.stdout)
 
+
 # -----------------------------
-# Vosk 모델 로드
+# Whisper STT (발음 그대로 반환 테스트용)
+# Vosk 대비 1분 음성 기준 25초 → 3~5초
+# 발음 교정 억제 프롬프트 적용 (gonna, wanna 등 그대로 반환)
 # -----------------------------
-VOSK_MODEL_PATH = "/app/app/models/vosk-model-small-en-us-0.15"  # 모델 다운로드 후 경로
-if not os.path.exists(VOSK_MODEL_PATH):
-    raise FileNotFoundError("Vosk 모델을 먼저 다운로드하세요!")
-vosk_model = Model(VOSK_MODEL_PATH)
+def stt_whisper(user_audio_path: str):
+    client = get_client()
 
-def stt_vosk(user_audio_path: str) :
-    """사용자 음성파일을 Vosk STT로 변환"""
-    audio_stream = prepare_audio_for_vosk(user_audio_path)
+    with open(user_audio_path, "rb") as audio_file:
+        result = client.audio.transcriptions.create(
+            model="whisper-1", # tts-1: 빠른 버전 / tts-1-hd: 고품질 버전 선택 가능
+            file=audio_file,
+            response_format="verbose_json",  # 단어별 confidence 포함
+            prompt=(
+                "Transcribe exactly as spoken. "
+                "Do not correct mispronunciations, grammar, or word choices. "
+                "Include fillers like 'uh', 'um', 'gonna', 'wanna' as heard."
+            )
+        )
 
-    # Vosk recognizer 초기화
-    model = Model(VOSK_MODEL_PATH)
-    rec = KaldiRecognizer(model, 16000)
-    rec.SetWords(True)
+    text = result.text.strip()
 
-    # wav header skip 필요 → wave 모듈 사용 X, raw bytes 그대로 처리
-    while True:
-        data = audio_stream.read(4000)
-        if len(data) == 0:
-            break
-        rec.AcceptWaveform(data)
+    # verbose_json이면 단어별 정보 포함
+    words = getattr(result, "words", []) or []
+    conf_dict = {w.word: getattr(w, "probability", 1.0) for w in words}
 
-    result = json.loads(rec.FinalResult())
-    text = result.get("text", "").strip()
-    words = result.get("result", [])  # 단어별 confidence
-
-    conf_dict = {w["word"]: w.get("conf", 0) for w in words}
     return text, conf_dict
-
-# Coqui TTS (optional)
-# 발음은 전형적인 American English
-tts_us_model = get_us_tts()
-#tts_uk_model = TTS(model_name="tts_models/en/vctk/vits", progress_bar=False, gpu=False)
 
 # -----------------------------
 # Audio trimming helper
@@ -121,18 +112,41 @@ def trim_audio(audio_bytes: bytes, silence_thresh=-40, min_silence_len=200) -> b
     buf.seek(0)
     return buf.getvalue()
 
-# -----------------------------
-# TTS 생성 (길이 포함)
-# -----------------------------
+# ----------------------------------------------------
+# OpenAI TTS
+# Coqui TTS 대비 12초 → 1~2초
+# 동일 문장은 Redis 캐시 반환 (TTS 생성 스킵)
+# 캐시 키 생성 전 텍스트 정규화 (\xa0, \r\n 등 제거)
+# ----------------------------------------------------
+TTS_CACHE_TTL = 60 * 60 * 24  # 24시간
+
 def tts_generate_us(text: str) -> tuple[bytes, float]:
-    """US tutor TTS → wav 바이트 리턴"""
-    wav_path = "reference_us.wav"
-    tts_us_model.tts_to_file(text=text, file_path=wav_path)
-    with open(wav_path, "rb") as f:
-        wav_bytes = f.read()
+    # 정규화: \xa0, \r\n 등 특수문자 제거 → 캐시 히트율 향상
+    normalized = text.strip().replace("\xa0", " ").replace("\r\n", " ").replace("\n", " ")
+    cache_key = f"tts:{hashlib.md5(text.encode()).hexdigest()}"
+
+    # 캐시 확인
+    cached = redis_client.get(cache_key)
+    if cached:
+        audio_bytes = base64.b64decode(cached)
+        seg = AudioSegment.from_file(io.BytesIO(audio_bytes), format="wav")
+        return audio_bytes, len(seg) / 1000.0
+
+    # OpenAI TTS 생성
+    client = get_client()
+    response = client.audio.speech.create(
+        model="tts-1",    # tts-1-hd: 고품질, tts-1: 빠른 버전
+        voice="alloy",    # 미국 영어 발음
+        input=normalized,
+        response_format="wav"
+    )
+    audio_bytes = response.content
 
     # trimming 적용
-    trimmed_bytes = trim_audio(wav_bytes)
+    trimmed_bytes = trim_audio(audio_bytes)
+
+    # Redis 캐싱
+    redis_client.set(cache_key, base64.b64encode(trimmed_bytes), ex=TTS_CACHE_TTL)
 
     seg = AudioSegment.from_file(io.BytesIO(trimmed_bytes), format="wav")
     duration_sec = len(seg) / 1000.0
@@ -151,18 +165,25 @@ def get_audio_duration(file_path: str) -> float:
 
 def evaluate_pronunciation(target_text: str, user_audio_path: str, tutor_type: str = "us"):
     """
-    전체 흐름: 사용자 오디오 → STT → 발음 평가 → 결과 반환
+    전체 흐름: 사용자 오디오 → STT + TTS 병렬 처리 → 발음 평가 → 결과 반환
     """
-    # 1) 튜터 참조 음성, 튜터 음성시간
-    ref_audio,ref_duration = tts_generate_us(target_text) if tutor_type == "us" else None
+    # 1) TTS + STT 병렬 처리 (서로 의존성 없음)
+    t0 = time.time()
+    with ThreadPoolExecutor() as executor:
+        tts_future = executor.submit(tts_generate_us, target_text)
+        stt_future = executor.submit(stt_whisper, user_audio_path) # whisper api로 테스트
 
-    # 2) 사용자 음성 → STT
-    user_transcript, conf_dict = stt_vosk(user_audio_path)
+        ref_audio, ref_duration = tts_future.result()
+        user_transcript, conf_dict = stt_future.result()
+    print(f"[TTS+STT 병렬] {time.time()-t0:.2f}s")
+
+    # 2) 사용자발화시간
+    t1 = time.time()
     user_seg = AudioSegment.from_file(user_audio_path)
-    # 사용자발화시간
     user_duration = len(user_seg) / 1000.0
+    print(f"[발화시간 계산] {time.time()-t1:.2f}s")
 
-    # 3) Invoke AI Prompt
+    # 3) GPT 평가
     system_prompt ="""You are an English pronunciation tutor. 
     Your job is to evaluate how well a learner pronounced a target phrase.
 
@@ -184,38 +205,22 @@ def evaluate_pronunciation(target_text: str, user_audio_path: str, tutor_type: s
         - If the learner’s speech is generally understandable, the minimum score should be 70.
         - Only if the speech is completely unintelligible, give below 50.
 
-    IMPORTANT STRENGTHS RULES:
-        - "strengths" must ONLY include content words (nouns, verbs, adjectives, adverbs)
-          that were pronounced clearly and confidently.
-        - NEVER include function words (articles: a, an, the / prepositions: to, on, in, at, of /
-          conjunctions: and, but, or / auxiliaries: is, was, do, have) in "strengths".
-        - Natural contractions (I'm, don't, gonna) are the ONLY exception — include them
-          if the learner used them naturally.
-        - Each entry should be the word itself, optionally with a brief note.    
-
-    example response:
-    {
-      "score": 87.5,
-      "feedback": [
-        "Content word 'goal' was clear 👍",
-        "Function word 'to' was slightly weak but acceptable.",
-        "Used contraction 'I'm' naturally 👌"
-      ],
-      "strengths": [
-        "kind",
-        "person",
-        "always",
-        "want",
-        "Used contraction 'I'm' naturally"
-        ],
-      "improvements": [
-        "Word 'clear' was slightly weak",
-        "Article 'the' was slightly weak"
-        ],
-      "rhythm_feedback": "Your speech was slightly slower than the native reference.",
-      "user_transcript": "...",
-      "target_text": "..."
-    }
+IMPORTANT: Return your final result in JSON format only.
+                
+example response:
+{
+  "score": 87.5,
+  "strengths": [
+    "Content word 'goal' was clear",
+    "Used contraction 'I'm' naturally"
+  ],
+  "improvements": [
+    "Content word 'because' was unclear",
+    "Speed was significantly slower than native reference"
+  ],
+  "rhythm_feedback": "Your speech was slightly slower than the native reference.",
+  "feedback": []
+}
  
 
     """
@@ -227,8 +232,10 @@ def evaluate_pronunciation(target_text: str, user_audio_path: str, tutor_type: s
     Reference duration: {ref_duration:.2f} seconds
     """
 
-    # pseudo code: AI 호출
+    # AI 호출
+    t2 = time.time()
     ai_response = call_ai(system_prompt, user_prompt)
+    print(f"[GPT 호출] {time.time()-t2:.2f}s")
 
     try :
         result = json.loads(ai_response)
@@ -245,9 +252,9 @@ def evaluate_pronunciation(target_text: str, user_audio_path: str, tutor_type: s
     total_result = {
         "score": result.get("score", 0),
         "feedback": result.get("feedback", []),
-        "strengths": result.get("strengths", []),               # 강점
-        "improvements": result.get("improvements", []),         # 개선점
-        "rhythm_feedback": result.get("rhythm_feedback", ""),   # 리듬 피드백
+        "strengths": result.get("strengths", []),
+        "improvements": result.get("improvements", []),
+        "rhythm_feedback": result.get("rhythm_feedback", ""),
         # "target_chunks": target_chunks,
         "reference_tts": ref_audio,   # US tutor 음성 (wav 바이트)
         "user_transcript": user_transcript,

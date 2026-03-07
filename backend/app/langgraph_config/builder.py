@@ -2,12 +2,10 @@
 # langgraph_config/builder.py
 from langgraph.graph import StateGraph, START, END
 from .store import global_store
-import whisper
 import tempfile
 import soundfile as sf
 import io
 import torch
-from app.core.tts_manager import get_us_tts
 
 from .pronunciation_module import evaluate_pronunciation
 
@@ -30,13 +28,6 @@ class PipelineState(dict):
                 decisions[k] = {"before": None, "after": v, "action": "add"}
             merged[k] = v
         return {"decisions": decisions, "merged_state": dict(merged)}
-
-# Whisper 모델 (한번 로드 후 재사용) -- 필요없을거같아서 지움
-# ws_model = whisper.load_model("base")
-
-# 한번만 로드해서 재사용
-tts_us_model = get_us_tts()
-#tts_uk_model = TTS(model_name="tts_models/en/vctk/vits", progress_bar=False, gpu=False)
 
 # ---------------- 노드 정의 ----------------
 def audio_store_node(state):
