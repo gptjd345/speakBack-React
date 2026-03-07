@@ -1,6 +1,6 @@
 # SpeakBack
 
-English pronunciation coaching web application powered by Vosk STT and GPT-4o.
+English pronunciation coaching web application powered by Whisper STT, OpenAI TTS, and GPT-4o-mini.
 
 ---
 
@@ -10,9 +10,10 @@ English pronunciation coaching web application powered by Vosk STT and GPT-4o.
 |---|---|
 | **Frontend** | React |
 | **Backend** | FastAPI, Uvicorn |
-| **AI** | Vosk (offline STT), GPT-4o-mini, Coqui TTS |
+| **AI** | Whisper API (STT), OpenAI TTS, GPT-4o-mini |
 | **Infra** | Docker Compose, PostgreSQL, Redis |
 | **Auth** | JWT (Access / Refresh Token) |
+| **Pipeline** | LangGraph |
 
 ---
 
@@ -35,9 +36,9 @@ English pronunciation coaching web application powered by Vosk STT and GPT-4o.
 [Pronunciation Pipeline]
   React (mic input)
     → FastAPI
-    → Vosk STT
+    → ffmpeg (normalize to 16kHz mono wav)
+    → Whisper API (STT) + OpenAI TTS (parallel) 
     → GPT-4o-mini (scoring + feedback)
-    → Coqui TTS (reference audio)
     → Response
 ```
 
@@ -74,25 +75,17 @@ git clone https://github.com/gptjd345/speakBack-React.git
 cd speakBack-React
 ```
 
-**2. Download Vosk model**
-```bash
-curl -L -o vosk-model-small-en-us-0.15.zip \
-  https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
-unzip vosk-model-small-en-us-0.15.zip -d backend/app/models/
-```
-
-**3. Configure environment**
+**2. Configure environment**
 ```bash
 cp .env.example .env
 # fill in OPENAI_API_KEY, JWT_SECRET_KEY, DATABASE_URL
 ```
-
-**4. Run**
+**3. Run**
 ```bash
 docker compose up --build
 ```
 
-**5. DB migration**
+**4. DB migration**
 ```bash
 docker compose exec fastapi alembic upgrade head
 ```
@@ -109,9 +102,9 @@ speakBack-React/
 ├── frontend/          # React
 └── backend/
     ├── app/
-    │   ├── routes/    # auth, pronunciation
-    │   ├── core/      # security, redis, tts
+    │   ├── routes/    # auth, analyze
+    │   ├── core/      # security, redis
     │   ├── db/        # models, schemas
-    │   └── langgraph/ # STT → GPT → TTS pipeline
+    │   └── langgraph/ # STT → TTS → GPT pipeline
     └── alembic/       # DB migrations
 ```
