@@ -9,16 +9,10 @@ import json
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from app.core.dependencies import get_current_user
+from app.db.database import get_db
 
 router = APIRouter()
-get_db = database.SessionLocal
-
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 RefreshToken = models.RefreshToken
 
@@ -122,47 +116,8 @@ def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
 # me 요청
 # 토큰 디코딩 -> token version 확인 -> 응답반환(DB 호출없음)
 @router.post("/me")
-def get_current_user(request: Request):
-
-    # 운영: 쿠키에서 토큰 추출
-    """
-    access_token = request.cookies.get("access_token")  # 운영 (httpOnly 쿠키)
-    
-    """
-    #로컬: Authorization 헤더에서 토큰 추출
-    access_token = request.headers.get("Authorization", "").replace("Bearer ", "")  # 로컬
-    
-    # 1. 토큰 디코딩
-    try:
-        access_payload = security.decode_access_token(access_token)
-    except HTTPException:
-        raise HTTPException(status_code=401, detail="Invalid access token")
-    
-    user_id = access_payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid token payload")
-    
-    # 2. payload의 token version 과 레디스에 캐시해놓은 token version이 동일한지 확인
-    redis_version = redis_client.get(f"token_version:{user_id}")
-    token_version = access_payload.get("token_version")
-
-    # 3. 레디스 
-    if redis_version is None:
-        # Redis에 없으면 → 로그인 필요 (재로그인 유도)
-        raise HTTPException(status_code=401, detail="Session not found")
-
-    if int(redis_version) != token_version:
-        raise HTTPException(status_code=401, detail="Token invalidated")
-
-
-    # 응답 반환 (access + refresh 둘 다 반환)
-    return {
-        "user": {
-            "id": access_payload.get("sub"),
-            "username": access_payload.get("username"),
-            "email": access_payload.get("email"),
-        }
-    }
+def me(current_user=Depends(get_current_user)):
+    return {"user": current_user}
 
 @router.post("/refresh")
 def refresh(request: Request, db: Session = Depends(get_db)):

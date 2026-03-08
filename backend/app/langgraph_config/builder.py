@@ -5,6 +5,7 @@ from .store import global_store
 import tempfile
 import soundfile as sf
 import io
+import os
 import torch
 
 from .pronunciation_module import evaluate_pronunciation
@@ -33,18 +34,53 @@ class PipelineState(dict):
 def audio_store_node(state):
     # 사용자 음성 데이터를 numpy + tensor 로 변환하고 Whisper STT 수행
     audioFile = global_store.audio_file
+    # mp3 / m4a / wav / webm 등 브라우저·업로드 포맷 모두 대응
     if audioFile is None:
         state["err_txt"] = "[audio store ERROR] No audio data found"
         return state
     
     try:
-        # 1) BytesIO → 임시 wav 파일 저장
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-            tmp.write(audioFile.read())
-            tmp_path = tmp.name
+        # 1) 원본 파일을 확장자 포함 임시파일로 저장
+        #    업로드 파일명에서 확장자를 가져오고, 없으면 .bin 으로 fallback
+        original_filename = getattr(global_store, "original_filename", "") or ""
+        _, ext = os.path.splitext(original_filename)
+        ext = ext.lower() if ext else ".bin"
 
-        global_store.tmp_path = tmp_path
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_src:
+            tmp_src.write(audioFile.read())
+            src_path = tmp_src.name
 
+        # 2) ffmpeg 로 16kHz mono wav 변환 → Whisper / pydub 입력 통일
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_dst:
+            dst_path = tmp_dst.name
+
+        # ----------------------------------------------------
+        # Audio data preprocessing (ffmpeg → 16kHz mono wav)
+        # 다양한 디바이스/브라우저 녹음 포맷을 통일하여 STT 정확도 안정화
+        # ----------------------------------------------------
+        import subprocess
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", src_path,
+                "-ar", "16000",   # 16kHz
+                "-ac", "1",       # mono
+                "-f", "wav",
+                dst_path,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+
+        # 원본 임시파일 정리
+        os.remove(src_path)
+
+        global_store.tmp_path = dst_path
+
+    except subprocess.CalledProcessError as e:
+        state["err_txt"] = f"[audio store ERROR] ffmpeg 변환 실패: {e.stderr.decode()}"
+        return state
     except Exception as e:
         state["err_txt"] = f"[audio store ERROR] {e}"
         return state
@@ -110,9 +146,32 @@ def tts_node(state: PipelineState):
     return state
 
 def db_save_node(state: PipelineState):
-    # DB 저장 시뮬레이션
-    print("=== [DB Save Node] Final State Snapshot ===")
-   
+    """분석 결과를 session_history 테이블에 저장"""
+    from app.db.database import SessionLocal
+    from app.db.models import SessionHistory
+
+    db = SessionLocal()
+    try:
+        record = SessionHistory(
+            user_id=global_store.user_id,
+            target_text=global_store.target_text or "",
+            user_transcript=getattr(global_store, "user_transcript", None),
+            score=getattr(global_store, "score", None),
+            strengths=getattr(global_store, "strengths", []),
+            improvements=getattr(global_store, "improvements", []),
+            rhythm_feedback=getattr(global_store, "rhythm_feedback", None),
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+        global_store.saved_session_id = record.id
+        print(f"=== [db_save_node] session_history 저장 완료 id={record.id} ===")
+    except Exception as e:
+        db.rollback()
+        print(f"=== [db_save_node] 저장 실패: {e} ===")
+    finally:
+        db.close()
+
     return state
 
 # ---------------- 그래프 빌더 ----------------

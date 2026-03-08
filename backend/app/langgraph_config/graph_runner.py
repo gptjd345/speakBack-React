@@ -9,7 +9,7 @@ import base64
 class PipelineState(dict):
     pass
 
-def run_pipeline(audio_file, user_name: str, target_text: str):
+def run_pipeline(audio_file, user_name: str, target_text: str, user_id: int = None, original_filename: str = "audio.wav"):
     try : 
         state = {
             "user_name": user_name,
@@ -21,7 +21,9 @@ def run_pipeline(audio_file, user_name: str, target_text: str):
         global_store.audio_file = io.BytesIO(audio_file)  # state가 아닌 store에 저장
         global_store.audio_file.seek(0)  # Whisper 등에서 읽기 위해 포인터 처음으로
         global_store.target_text = target_text
-
+        global_store.original_filename = original_filename  # 확장자 감지용
+        global_store.user_id = user_id       # db_save_node 에서 사용
+        global_store.user_name = user_name
         print("DEBUG: run_graph 시작")
         
         compiled_graph.invoke(state)

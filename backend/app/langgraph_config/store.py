@@ -3,11 +3,12 @@ class GlobalStore:
     def __init__(self):
         self.target_text = None   # 사용자가 말하고자 하는 목표 문장  
         self.audio_file = None    # BytesIO 같은 파일 객체
-
-        # 마이크 입력시 샘플링 주파수 32khz, 이고 whisper읽을때 16khz라 어차피 다시 샘플링해야함 
+        self.original_filename = None # 업로드 파일명 (확장자 감지용) 
         self.tmp_path = None       # 원본파일 저장위치
 
-        self.user_name = None      # 사용자 정보
+        self.user_id = None        # DB 저장용 user pk
+        self.user_name = None      # 사용자계정명
+        self.saved_session_id = None  # 저장된 session_history id
         # 필요하면 더 추가 (예: 세션 ID 등)
 
         self.score = None # score

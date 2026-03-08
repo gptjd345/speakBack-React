@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.auth_routes import router as api_router
 from app.routes.langgraph_routes import router as analyze_router
+from app.routes.history_routes import router as history_router
 from app.db.database import Base, engine
 
 app = FastAPI(title="SpeakBack API")
@@ -19,8 +20,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# DB 테이블 생성
-Base.metadata.create_all(bind=engine)
+# DB 테이블 생성 alembic으로 관리할 예정
+# Base.metadata.create_all(bind=engine)
 
 app.include_router(api_router, prefix="/api/auth", tags=["auth"])
 app.include_router(analyze_router, prefix="/api/analyze", tags=["analyze"])
+app.include_router(history_router, prefix="/api/history", tags=["history"])

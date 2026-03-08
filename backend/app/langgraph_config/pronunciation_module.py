@@ -35,27 +35,6 @@ def call_ai(system_prompt: str, user_prompt: str) -> str:
     )
     return response.choices[0].message.content
 
-# ----------------------------------------------------
-# Audio data preprocessing (ffmpeg → 16kHz mono wav)
-# 다양한 디바이스/브라우저 녹음 포맷을 통일하여 STT 정확도 안정화
-# ----------------------------------------------------
-def prepare_audio_for_whisper(org_file_path) -> io.BytesIO:
-    process = subprocess.run(
-        [
-            "ffmpeg",
-            "-i", org_file_path,
-            "-ar", "16000",    # 16kHz
-            "-ac", "1",        # mono
-            "-f", "wav",
-            "pipe:1"
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=True
-    )
-    return io.BytesIO(process.stdout)
-
-
 # -----------------------------
 # Whisper STT (발음 그대로 반환 테스트용)
 # Vosk 대비 1분 음성 기준 25초 → 3~5초
@@ -118,7 +97,7 @@ def trim_audio(audio_bytes: bytes, silence_thresh=-40, min_silence_len=200) -> b
 # 동일 문장은 Redis 캐시 반환 (TTS 생성 스킵)
 # 캐시 키 생성 전 텍스트 정규화 (\xa0, \r\n 등 제거)
 # ----------------------------------------------------
-TTS_CACHE_TTL = 60 * 60 * 24  # 24시간
+TTS_CACHE_TTL = 60 * 60 * 6  # 6시간
 
 def tts_generate_us(text: str) -> tuple[bytes, float]:
     # 정규화: \xa0, \r\n 등 특수문자 제거 → 캐시 히트율 향상
