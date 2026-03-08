@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str  # .env에서 관리
     JWT_ALGORITHM: str   # .env에서 관리
 
+    # AWS
+    AWS_REGION: str
+    AWS_ACCESS_KEY_ID: str
+    AWS_SECRET_ACCESS_KEY: str
+    S3_BUCKET: str
+
     # Pydantic v2 style
     model_config = SettingsConfigDict(
         env_file=".env",

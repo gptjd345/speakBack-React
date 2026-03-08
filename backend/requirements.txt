@@ -44,6 +44,12 @@ bnnumerizer==0.0.2
     # via tts
 bnunicodenormalizer==0.1.7
     # via tts
+boto3==1.42.63
+    # via -r requirements.in
+botocore==1.42.63
+    # via
+    #   boto3
+    #   s3transfer
 catalogue==2.0.10
     # via
     #   spacy
@@ -187,6 +193,10 @@ jinja2==3.1.6
     #   torch
 jiter==0.11.0
     # via openai
+jmespath==1.1.0
+    # via
+    #   boto3
+    #   botocore
 joblib==1.5.2
     # via
     #   librosa
@@ -394,6 +404,7 @@ python-crfsuite==0.9.11
     # via gruut
 python-dateutil==2.9.0.post0
     # via
+    #   botocore
     #   dateparser
     #   matplotlib
     #   pandas
@@ -443,6 +454,8 @@ rich==14.2.0
     # via typer
 rsa==4.9.1
     # via python-jose
+s3transfer==0.16.0
+    # via boto3
 safetensors==0.6.2
     # via transformers
 scikit-learn==1.7.2
@@ -585,7 +598,9 @@ umap-learn==0.5.9.post2
 unidecode==1.4.0
     # via tts
 urllib3==2.5.0
-    # via requests
+    # via
+    #   botocore
+    #   requests
 uvicorn[standard]==0.37.0
     # via -r requirements.in
 uvloop==0.21.0
