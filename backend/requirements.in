@@ -1,10 +1,6 @@
 langgraph
-openai-whisper
-numpy<=2.2.0
-soundfile
-TTS
+librosa
 python-dotenv
-vosk
 openai
 fastapi                # FastAPI 웹 프레임워크
 uvicorn[standard]      # ASGI 서버
@@ -21,3 +17,5 @@ redis>=5.0.0
 pydantic-settings
 pydub
 boto3
+pgvector
+ragas
