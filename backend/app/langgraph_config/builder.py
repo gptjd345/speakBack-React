@@ -3,10 +3,7 @@
 from langgraph.graph import StateGraph, START, END
 from .store import global_store
 import tempfile
-import soundfile as sf
-import io
 import os
-import torch
 
 from .pronunciation_module import evaluate_pronunciation
 
@@ -146,12 +143,15 @@ def tts_node(state: PipelineState):
     return state
 
 def db_save_node(state: PipelineState):
-    """분석 결과를 session_history 테이블에 저장"""
+    """분석 결과를 session_history + session_patterns 테이블에 저장"""
     from app.db.database import SessionLocal
-    from app.db.models import SessionHistory
+    from app.db.models import SessionHistory, SessionPattern
+    from app.core.embedding import get_embedding, build_pattern_text, extract_transcript_mismatches
+    from datetime import datetime
 
     db = SessionLocal()
     try:
+        # 1) session_history 저장 (기존)
         record = SessionHistory(
             user_id=global_store.user_id,
             target_text=global_store.target_text or "",
@@ -166,6 +166,31 @@ def db_save_node(state: PipelineState):
         db.refresh(record)
         global_store.saved_session_id = record.id
         print(f"=== [db_save_node] session_history 저장 완료 id={record.id} ===")
+
+        # 2) session_patterns 저장 (신규 - RAG용)
+        improvements = getattr(global_store, "improvements", []) or []
+        user_transcript = getattr(global_store, "user_transcript", "") or ""
+        target_text = global_store.target_text or ""
+        score = getattr(global_store, "score", 0) or 0
+
+        mismatches = extract_transcript_mismatches(target_text, user_transcript)
+        pattern_text = build_pattern_text(improvements, mismatches, score)
+        embedding = get_embedding(pattern_text)
+
+        pattern = SessionPattern(
+            session_id=record.id,
+            user_id=global_store.user_id,
+            pattern_text=pattern_text,
+            weak_words=improvements,
+            transcript_mismatches=mismatches,
+            score=score,
+            embedding=embedding,
+            created_at=datetime.utcnow(),
+        )
+        db.add(pattern)
+        db.commit()
+        print(f"=== [db_save_node] session_patterns 저장 완료 ===")
+
     except Exception as e:
         db.rollback()
         print(f"=== [db_save_node] 저장 실패: {e} ===")

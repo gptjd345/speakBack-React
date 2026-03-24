@@ -5,7 +5,7 @@ import "../styles/Sidebar.css";
 const NAV_ITEMS = [
   { id: "home",  icon: "🏠", label: "Home" },
   { id: "coach", icon: "🎤", label: "Pronunciation Coach" },
-  { id: "lab",   icon: "🧪", label: "Practice Lab", soon: true },
+  { id: "lab",   icon: "🧪", label: "Practice Lab" },
 ];
 
 function Sidebar({ active, onNavigate }) {

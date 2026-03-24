@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.auth_routes import router as api_router
 from app.routes.langgraph_routes import router as analyze_router
 from app.routes.history_routes import router as history_router
+from app.routes.lab_routes import router as lab_router
 from app.db.database import Base, engine
 from app.langgraph_config.pronunciation_module import warmup_librosa
 
@@ -31,3 +32,4 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api/auth", tags=["auth"])
 app.include_router(analyze_router, prefix="/api/analyze", tags=["analyze"])
 app.include_router(history_router, prefix="/api/history", tags=["history"])
+app.include_router(lab_router, prefix="/api/lab", tags=["lab"])

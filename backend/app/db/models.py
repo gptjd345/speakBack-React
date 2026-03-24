@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Float, JSON
 from datetime import datetime
 from .database import Base
+from pgvector.sqlalchemy import Vector
 
 class User(Base):
     __tablename__ = "users"
@@ -33,4 +34,16 @@ class SessionHistory(Base):
     strengths = Column(JSON, nullable=True)              # 잘한 부분 ["word1", ...]
     improvements = Column(JSON, nullable=True)           # 개선 필요 ["word1", ...]
     rhythm_feedback = Column(Text, nullable=True)        # 리듬 피드백
-    created_at = Column(DateTime, default=datetime.utcnow)    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class SessionPattern(Base):
+    __tablename__ = "session_patterns"
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("session_history.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    pattern_text = Column(Text, nullable=False)          # 임베딩 원본 텍스트
+    weak_words = Column(JSON, nullable=True)             # 약한 내용어
+    transcript_mismatches = Column(JSON, nullable=True)  # target vs STT 불일치 단어
+    score = Column(Float, nullable=True)
+    embedding = Column(Vector(1536), nullable=True)      # OpenAI text-embedding-3-small
+    created_at = Column(DateTime, default=datetime.utcnow)
