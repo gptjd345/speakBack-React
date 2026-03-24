@@ -2,6 +2,7 @@ from .store import global_store
 
 import hashlib
 import base64
+import threading
 
 from concurrent.futures import ThreadPoolExecutor
 import time
@@ -14,6 +15,43 @@ import subprocess
 
 from openai import OpenAI
 from app.core.redis import redis_client
+
+# ----------------------------------------------------
+# librosa / numba JIT 워밍업
+# numba는 첫 호출 시 JIT 컴파일로 5-15초 소요.
+# /prepare 엔드포인트에서 백그라운드로 미리 실행해두면
+# 실제 분석 시점엔 컴파일이 완료되어 즉시 실행됨.
+# ----------------------------------------------------
+_librosa_warmup_done  = threading.Event()
+_librosa_warmup_lock  = threading.Lock()
+_librosa_warmup_started = False
+
+def warmup_librosa():
+    """백그라운드에서 librosa pyin 더미 호출 → numba JIT 컴파일 완료."""
+    global _librosa_warmup_started
+    with _librosa_warmup_lock:
+        if _librosa_warmup_started:
+            return
+        _librosa_warmup_started = True
+
+    def _run():
+        try:
+            import librosa
+            import numpy as np
+            dummy = np.zeros(3200, dtype=np.float32)  # 0.2s @ 16kHz
+            librosa.pyin(
+                dummy,
+                fmin=librosa.note_to_hz("C2"),
+                fmax=librosa.note_to_hz("C7"),
+                sr=16000,
+            )
+            print("[librosa warmup] numba JIT 컴파일 완료")
+        except Exception as e:
+            print(f"[librosa warmup] 실패: {e}")
+        finally:
+            _librosa_warmup_done.set()
+
+    threading.Thread(target=_run, daemon=True).start()
 
 def get_client():
     return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -45,9 +83,10 @@ def stt_whisper(user_audio_path: str):
 
     with open(user_audio_path, "rb") as audio_file:
         result = client.audio.transcriptions.create(
-            model="whisper-1", # tts-1: 빠른 버전 / tts-1-hd: 고품질 버전 선택 가능
+            model="whisper-1",
             file=audio_file,
-            response_format="verbose_json",  # 단어별 confidence 포함
+            response_format="verbose_json",
+            timestamp_granularities=["word"],  # 단어별 타임스탬프 활성화
             prompt=(
                 "Transcribe exactly as spoken. "
                 "Do not correct mispronunciations, grammar, or word choices. "
@@ -57,11 +96,137 @@ def stt_whisper(user_audio_path: str):
 
     text = result.text.strip()
 
-    # verbose_json이면 단어별 정보 포함
     words = getattr(result, "words", []) or []
     conf_dict = {w.word: getattr(w, "probability", 1.0) for w in words}
 
-    return text, conf_dict
+    # 단어별 타임스탬프 추출
+    word_timestamps = [
+        {
+            "word": w.word,
+            "start": float(getattr(w, "start", 0.0)),
+            "end": float(getattr(w, "end", 0.0)),
+        }
+        for w in words
+        if getattr(w, "start", None) is not None
+    ]
+
+    return text, conf_dict, word_timestamps
+
+# ----------------------------------------------------
+# Acoustic Feature Extraction (librosa + Whisper timestamp)
+# numba JIT는 warmup_librosa()로 /prepare 시점에 미리 완료됨
+# ----------------------------------------------------
+def analyze_acoustic_features(audio_path: str, word_timestamps: list) -> list:
+    """
+    단어별 음향 특징 추출.
+    word_timestamps: stt_whisper()가 반환한 [{word, start, end}, ...]
+
+    Returns:
+        list of dict: [{
+            word, start, end,
+            rms_energy,      # 에너지 크기
+            mean_pitch,      # 평균 피치(Hz), 무성음=0
+            duration,        # 발화 길이(초)
+            linking_next,    # 다음 단어와 연음 여부 (gap < 50ms)
+            energy_rank,     # 문장 내 에너지 순위 (1 = 가장 강함)
+            energy_rank_pct, # 상위 몇 %
+        }, ...]
+    """
+    import librosa
+    import numpy as np
+
+    if not word_timestamps:
+        return []
+
+    # warmup 완료 대기 (최대 30초 — 이미 완료됐으면 즉시 통과)
+    warmed = _librosa_warmup_done.wait(timeout=30)
+    if not warmed:
+        print("[analyze_acoustic_features] librosa warmup 타임아웃 — 그냥 진행")
+
+    y, sr = librosa.load(audio_path, sr=16000)
+
+    raw_features = []
+    for i, w in enumerate(word_timestamps):
+        start_s = max(0.0, w["start"])
+        end_s   = min(len(y) / sr, w["end"])
+
+        if end_s <= start_s:
+            continue
+
+        seg = y[int(start_s * sr): int(end_s * sr)]
+        duration = end_s - start_s
+
+        # RMS 에너지
+        rms = float(np.sqrt(np.mean(seg ** 2))) if len(seg) > 0 else 0.0
+
+        # 피치 (F0) — warmup 덕분에 JIT 컴파일 완료 상태
+        mean_pitch = 0.0
+        if duration >= 0.05:
+            try:
+                f0, voiced, _ = librosa.pyin(
+                    seg,
+                    fmin=librosa.note_to_hz("C2"),
+                    fmax=librosa.note_to_hz("C7"),
+                    sr=sr,
+                )
+                voiced_f0 = f0[voiced] if voiced is not None else np.array([])
+                if len(voiced_f0) > 0:
+                    mean_pitch = float(np.nanmean(voiced_f0))
+            except Exception:
+                pass
+
+        # 연음: 다음 단어와의 gap
+        if i < len(word_timestamps) - 1:
+            gap = word_timestamps[i + 1]["start"] - w["end"]
+            linking_next = gap < 0.05
+        else:
+            linking_next = False
+
+        raw_features.append({
+            "word": w["word"],
+            "start": start_s,
+            "end": end_s,
+            "duration": round(duration, 3),
+            "rms_energy": rms,
+            "mean_pitch": round(mean_pitch, 1),
+            "linking_next": linking_next,
+            "energy_rank": 0,
+            "energy_rank_pct": 0.0,
+        })
+
+    # 강세: 절대값 대신 문장 내 에너지 순위로 판정
+    if raw_features:
+        total = len(raw_features)
+        sorted_indices = sorted(
+            range(total),
+            key=lambda i: raw_features[i]["rms_energy"],
+            reverse=True,  # 높은 에너지 = 낮은 순위 번호
+        )
+        rank_map = {idx: rank + 1 for rank, idx in enumerate(sorted_indices)}
+        for i, f in enumerate(raw_features):
+            rank = rank_map[i]
+            f["energy_rank"]     = rank
+            f["energy_rank_pct"] = round(rank / total * 100, 1)  # 상위 X%
+
+    return raw_features
+
+
+def _format_acoustic_for_prompt(acoustic_features: list) -> str:
+    """GPT 프롬프트에 넣을 음향 분석 요약 문자열 생성."""
+    total = len(acoustic_features)
+    if total == 0:
+        return ""
+
+    lines = []
+    for f in acoustic_features:
+        rank_str    = f"rank {f['energy_rank']}/{total} (top {f['energy_rank_pct']}%)"
+        linking_tag = " [LINKED->next]" if f["linking_next"] else ""
+        lines.append(
+            f"  '{f['word']}': energy={f['rms_energy']:.4f} ({rank_str}), "
+            f"dur={f['duration']}s{linking_tag}"
+        )
+    return "\n".join(lines)
+
 
 # -----------------------------
 # Audio trimming helper
@@ -142,79 +307,221 @@ def get_audio_duration(file_path: str) -> float:
         rate = wf.getframerate()
         return frames / float(rate)   
 
+TEXT_ANALYSIS_CACHE_TTL = 60 * 60 * 24  # 24시간 (문장 분석은 변하지 않음)
+
+def analyze_communicative_weight(target_text: str) -> dict:
+    """
+    target_text의 단어별 communicative weight 사전 분석.
+    오디오 없이 텍스트만으로 실행 가능.
+    동일 문장은 Redis 캐시 반환.
+    """
+    cache_key = f"text_analysis:{hashlib.md5(target_text.strip().lower().encode()).hexdigest()}"
+    cached = redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    system_prompt = """You are an English linguistics expert specializing in conversational speech.
+
+Analyze the given sentence for a non-native speaker learning to communicate naturally with native speakers.
+
+For each word, determine:
+- communicative_weight: "high" | "medium" | "low"
+    high   = core meaning — if unclear, native listener may not understand
+    medium = supporting meaning — slight confusion if unclear
+    low    = structural/grammatical — reduction or omission sounds natural
+- stress_expected: true if a native speaker would naturally stress this word
+- reduction_acceptable: true if weakening this word is natural in casual speech
+- omission_acceptable: true if omitting this word is natural in casual speech
+
+Also identify:
+1. nuclear_stress_word: the single word carrying the strongest sentence-level stress.
+   This is usually the last content word, or a word carrying new/contrastive information.
+
+2. compound_nouns: list of compound nouns in the sentence.
+   Compound nouns always stress the FIRST element (e.g., "SHOW dog", "HIGH school").
+   The second element gets lighter stress — do NOT penalize this lighter stress.
+
+RULES:
+- Judge from CONVERSATIONAL context, not formal/written context
+- Personal pronouns like "I" at the start of a personal statement are often low weight
+- Function words (articles, prepositions, auxiliaries) are almost always low weight
+- The nuclear stress word is the most critical word to evaluate
+
+Return JSON only."""
+
+    user_prompt = f"""Analyze this sentence for conversational English:
+"{target_text}"
+
+Return this exact format:
+{{
+  "words": [
+    {{
+      "word": "word",
+      "communicative_weight": "high|medium|low",
+      "stress_expected": true,
+      "reduction_acceptable": false,
+      "omission_acceptable": false,
+      "note": "one-line reason"
+    }}
+  ],
+  "key_focus_words": ["word1", "word2"],
+  "natural_weak_words": ["word1", "word2"],
+  "nuclear_stress_word": "the single most stressed word in the sentence",
+  "compound_nouns": [
+    {{
+      "compound": "full compound noun phrase",
+      "primary_stress_on": "the first element that takes primary stress",
+      "secondary_stress_words": ["other words in the compound with lighter stress"]
+    }}
+  ]
+}}"""
+
+    t = time.time()
+    raw = call_ai(system_prompt, user_prompt)
+    print(f"[communicative weight 분석] {time.time()-t:.2f}s")
+
+    try:
+        result = json.loads(raw)
+    except json.JSONDecodeError:
+        result = {"words": [], "key_focus_words": [], "natural_weak_words": []}
+
+    redis_client.set(cache_key, json.dumps(result), ex=TEXT_ANALYSIS_CACHE_TTL)
+    return result
+
+
 def evaluate_pronunciation(target_text: str, user_audio_path: str, tutor_type: str = "us"):
     """
     전체 흐름: 사용자 오디오 → STT + TTS 병렬 처리 → 발음 평가 → 결과 반환
     """
-    # 1) TTS + STT 병렬 처리 (서로 의존성 없음)
+    # 1) 텍스트 사전 분석 + TTS + STT 병렬 처리
     t0 = time.time()
     with ThreadPoolExecutor() as executor:
+        text_analysis_future = executor.submit(analyze_communicative_weight, target_text)
         tts_future = executor.submit(tts_generate_us, target_text)
-        stt_future = executor.submit(stt_whisper, user_audio_path) # whisper api로 테스트
+        stt_future = executor.submit(stt_whisper, user_audio_path)
 
+        text_analysis = text_analysis_future.result()
         ref_audio, ref_duration = tts_future.result()
-        user_transcript, conf_dict = stt_future.result()
-    print(f"[TTS+STT 병렬] {time.time()-t0:.2f}s")
+        user_transcript, conf_dict, word_timestamps = stt_future.result()
+    print(f"[text_analysis+TTS+STT 병렬] {time.time()-t0:.2f}s")
 
-    # 2) 사용자발화시간
+    # 2) 사용자 발화 시간 + 음향 분석
     t1 = time.time()
     user_seg = AudioSegment.from_file(user_audio_path)
     user_duration = len(user_seg) / 1000.0
-    print(f"[발화시간 계산] {time.time()-t1:.2f}s")
 
-    # 3) GPT 평가
-    system_prompt ="""You are an English pronunciation tutor. 
-    Your job is to evaluate how well a learner pronounced a target phrase.
+    acoustic_features = analyze_acoustic_features(user_audio_path, word_timestamps)
+    print(f"[발화시간+음향분석] {time.time()-t1:.2f}s")
 
-    Criteria:
-    1. Content words (nouns, verbs, adjectives, adverbs) are most important. 
-       - Strong weight if clear and confident.
-       - Medium if slightly weak but understandable.
-       - Low if unclear or missing.
-    2. Function words (articles, prepositions, auxiliaries) are less important. 
-       - If the learner used natural contractions (I'm, gonna, don't), give extra credit.
-       - If omitted but sentence is still natural, small penalty only.
-    3. Speed & rhythm: If user’s speech duration is close to native reference duration, give a bonus.
-    4. Give short, encouraging feedback for each important word.
-    5. Return a total score as a percentage (0-100).
-    
-    IMPORTANT: Return your final result in JSON format only.
-    IMPORTANT SCORING RULES:
-        - Always return a score between 50 and 100.
-        - If the learner’s speech is generally understandable, the minimum score should be 70.
-        - Only if the speech is completely unintelligible, give below 50.
+    # 3) GPT 평가용 데이터 구성
+    key_focus         = text_analysis.get("key_focus_words", [])
+    natural_weak      = text_analysis.get("natural_weak_words", [])
+    word_details      = text_analysis.get("words", [])
+    nuclear_word      = text_analysis.get("nuclear_stress_word", "")
+    compound_nouns    = text_analysis.get("compound_nouns", [])
 
-IMPORTANT: Return your final result in JSON format only.
-                
-example response:
-{
-  "score": 87.5,
-  "strengths": [
-    "Content word 'goal' was clear",
-    "Used contraction 'I'm' naturally"
-  ],
-  "improvements": [
-    "Content word 'because' was unclear",
-    "Speed was significantly slower than native reference"
-  ],
-  "rhythm_feedback": "Your speech was slightly slower than the native reference.",
-  "feedback": []
-}
- 
+    # communicative weight 요약 (Step 1 결과)
+    weight_parts = []
+    for w in word_details:
+        word_str   = w.get("word", "")
+        weight_str = w.get("communicative_weight", "")
+        stress_str = w.get("stress_expected", False)
+        red_str    = w.get("reduction_acceptable", False)
+        omit_str   = w.get("omission_acceptable", False)
+        note_str   = w.get("note", "")
+        note_sfx   = f" -> {note_str}" if note_str else ""
+        weight_parts.append(
+            f"  '{word_str}': weight={weight_str}, stress_expected={stress_str}, "
+            f"reduction_ok={red_str}, omission_ok={omit_str}{note_sfx}"
+        )
+    weight_lines = "\n".join(weight_parts)
 
-    """
+    # 복합명사 강세 규칙 요약
+    compound_parts = []
+    for cn in compound_nouns:
+        compound_str  = cn.get("compound", "")
+        primary_str   = cn.get("primary_stress_on", "")
+        secondary_str = cn.get("secondary_stress_words", [])
+        compound_parts.append(
+            f"  '{compound_str}': primary stress on '{primary_str}', "
+            f"lighter stress (do NOT penalize) on {secondary_str}"
+        )
+    compound_lines = "\n".join(compound_parts) if compound_parts else "  (none)"
 
-    user_prompt = f"""
-    Target phrase: "{target_text}"
-    Learner transcript: "{user_transcript}"
-    Learner duration: {user_duration:.2f} seconds
-    Reference duration: {ref_duration:.2f} seconds
-    """
+    # 음향 분석 요약 (Step 2 결과)
+    acoustic_lines = _format_acoustic_for_prompt(acoustic_features)
+
+    system_prompt = """You are an encouraging English pronunciation coach.
+The learner's goal is NOT to sound like a native speaker - it is to communicate clearly enough that native speakers understand them without effort.
+Your job is to help them build confidence while improving, not to nitpick perfection.
+
+You are given three types of data:
+1. Communicative weight per word - how important each word is for communication.
+2. Stress rules - nuclear stress word and compound noun stress patterns.
+3. Acoustic features - energy RANK per word (rank 1 = highest energy in sentence).
+
+CORE EVALUATION QUESTION:
+"Would a native speaker understand this without effort?"
+-> YES, clearly    : 90-100
+-> YES, mostly     : 85-90
+-> SOMEWHAT        : 70-85
+-> NO              : 50-70
+
+STRESS IS NOT BINARY. Do not expect dramatic, exaggerated stress.
+Evaluate by relative rank among neighboring words, not absolute energy.
+
+STRESS EVALUATION RULE - judge by content words, not function words:
+- Look at each HIGH or MEDIUM weight content word and compare its energy rank against nearby function words.
+- If a content word ranks LOWER (weaker) than a neighboring function word -> potential issue.
+- Minor inversions (1-2 rank difference) are acceptable - do NOT penalize.
+- Penalize only when a content word is clearly and consistently weaker than surrounding function words.
+- nuclear_stress_word should rank higher than the function words around it. If not, note it gently.
+- compound noun: primary_stress_on word should rank higher than its secondary words. If it does, all good.
+- Never evaluate function words in isolation - only use them as a reference point for content word comparison.
+
+FEEDBACK TONE:
+- Frame improvements as "would sound even more natural if..." not "this was wrong".
+- Always find something positive to say first.
+- Keep improvements to 1-2 points maximum. Do not overwhelm.
+
+Return JSON only."""
+
+    user_prompt = (
+        "Target phrase: {target_text}\n"
+        "Learner transcript: {user_transcript}\n"
+        "Learner duration: {user_duration}s / Reference duration: {ref_duration}s\n\n"
+        "[1] Communicative weight:\n{weight_lines}\n\n"
+        "Key words that MUST be clear: {key_focus}\n"
+        "Words where reduction/omission is NATURAL: {natural_weak}\n\n"
+        "[2] Stress rules:\n"
+        "  Nuclear stress word (most critical): '{nuclear_word}'\n"
+        "  Compound noun stress patterns:\n{compound_lines}\n\n"
+        "[3] Acoustic features (measured from audio):\n{acoustic_lines}\n\n"
+        "Evaluate and return:\n"
+        "{{\n"
+        '  "score": 0-100,\n'
+        '  "strengths": ["specific observations referencing actual words"],\n'
+        '  "improvements": ["specific actionable feedback, focus on nuclear stress and key words"],\n'
+        '  "rhythm_feedback": "one sentence on stress pattern and linking quality",\n'
+        '  "feedback": []\n'
+        "}}"
+    ).format(
+        target_text=target_text,
+        user_transcript=user_transcript,
+        user_duration=f"{user_duration:.2f}",
+        ref_duration=f"{ref_duration:.2f}",
+        weight_lines=weight_lines,
+        key_focus=key_focus,
+        natural_weak=natural_weak,
+        nuclear_word=nuclear_word,
+        compound_lines=compound_lines,
+        acoustic_lines=acoustic_lines if acoustic_lines else "  (no timestamp data available)",
+    )
 
     # AI 호출
     t2 = time.time()
     ai_response = call_ai(system_prompt, user_prompt)
-    print(f"[GPT 호출] {time.time()-t2:.2f}s")
+    print(f"[GPT 평가 호출] {time.time()-t2:.2f}s")
 
     try :
         result = json.loads(ai_response)

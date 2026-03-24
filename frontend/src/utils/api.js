@@ -22,6 +22,40 @@ if (!IS_PROD) {
     }
     return config;
   });
+
+  // response 인터셉터 (추가)
+  api.interceptors.response.use(
+    (response) => response, // 성공은 그대로
+    async (error) => {
+      const originalRequest = error.config;
+
+      // 401이고 refresh 재시도 안 한 요청만
+      if (error.response?.status === 401 && !originalRequest._retry) {
+        originalRequest._retry = true; // 무한루프 방지
+
+        try {
+          const refreshRes = await api.post("/api/auth/refresh");
+          const newAccessToken = refreshRes.data.access_token;
+          const newRefreshToken = refreshRes.data.refresh_token;
+
+          localStorage.setItem("access_token", newAccessToken);
+          localStorage.setItem("refresh_token", newRefreshToken);
+
+          // 원래 요청 헤더 업데이트 후 재시도
+          originalRequest.headers["Authorization"] = `Bearer ${newAccessToken}`;
+          return api(originalRequest);
+        } catch {
+          // refresh도 실패 → 로그아웃 처리
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("refresh_token");
+          window.location.href = "/"; // 로그인 페이지로
+        }
+      }
+
+      return Promise.reject(error);
+    }
+  );
+
 }
 
 export default api;

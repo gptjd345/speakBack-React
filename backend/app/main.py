@@ -4,8 +4,13 @@ from app.routes.auth_routes import router as api_router
 from app.routes.langgraph_routes import router as analyze_router
 from app.routes.history_routes import router as history_router
 from app.db.database import Base, engine
+from app.langgraph_config.pronunciation_module import warmup_librosa
 
 app = FastAPI(title="SpeakBack API")
+
+@app.on_event("startup")
+async def startup():
+    warmup_librosa()  # 서버 시작 시 numba JIT 컴파일 백그라운드 실행
 
 # CORS 설정 (React 프론트엔드 접근 허용)
 origins = [

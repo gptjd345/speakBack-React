@@ -33,6 +33,32 @@ def get_upload_url(
     )
     return result
 
+# ─── 1.5단계: target text 사전 분석 (캐시 워밍) ─────────────────
+class PrepareRequest(BaseModel):
+    target_text: str
+
+@router.post("/prepare")
+def prepare_analysis(
+    body: PrepareRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    target_text를 받아 communicative weight 분석 + TTS를 미리 실행해 Redis에 캐싱.
+    오디오 없이 실행 가능. 이후 /process 호출 시 캐시 히트로 빠르게 처리됨.
+    """
+    from app.langgraph_config.pronunciation_module import (
+        analyze_communicative_weight,
+        tts_generate_us,
+    )
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor() as executor:
+        executor.submit(analyze_communicative_weight, body.target_text)
+        executor.submit(tts_generate_us, body.target_text)
+
+    return {"status": "ready"}
+
+
 # ─── 2단계: s3_key로 분석 실행 ───────────────────────────────────
 @router.post("/process")
 async def process_audio(

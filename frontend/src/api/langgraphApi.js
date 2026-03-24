@@ -34,6 +34,11 @@ export async function runLangGraphRequest(file, user, targetText) {
   return response.data;
 }
 
+// ─── target text 사전 분석 (캐시 워밍) ───────────────────────────
+export async function prepareAnalysis(targetText) {
+  await api.post("/api/analyze/prepare", { target_text: targetText });
+}
+
 // ─── 히스토리 목록 조회 ───────────────────────────────────────────
 export async function fetchHistory(limit = 20) {
   const response = await api.get(`/api/history/?limit=${limit}`);

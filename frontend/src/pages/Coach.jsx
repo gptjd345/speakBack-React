@@ -5,7 +5,7 @@ import AudioUploader from "../components/AudioUploader";
 import TargetTextInput from "../components/TargetTextInput";
 import ResultViewer from "../components/ResultViewer";
 import Toast from "../components/Toast";
-import { fetchHistory, fetchHistoryDetail } from "../api/langgraphApi";
+import { fetchHistory, fetchHistoryDetail, prepareAnalysis } from "../api/langgraphApi";
 import "../styles/Coach.css";
 
 // ─── 날짜 포맷 헬퍼 ──────────────────────────────────────────────
@@ -66,6 +66,8 @@ function Coach() {
   const { loading: analyzing, runLangGraphProcess } = useLangGraph();
 
   const [targetText, setTargetText]       = useState("");
+  const [textReady, setTextReady]         = useState(false);  // 문장 제출 완료 여부
+  const [preparing, setPreparing]         = useState(false);  // 사전 분석 중
   const [file, setFile]                   = useState(null);
 
   // 방금 분석한 결과
@@ -97,7 +99,7 @@ function Coach() {
 
   useEffect(() => {
     loadHistory();
-  }, [user]);
+  }, [user?.id]);
 
   // ─── 히스토리 항목 클릭 → 상세 조회 ────────────────────────────
   const handleHistorySelect = async (id) => {
@@ -120,19 +122,35 @@ function Coach() {
     setTimeout(() => setToast({ show: false, message: "" }), 3000);
   };
 
-  const handleSend = async () => {
+  // ─── Step 1: 문장 제출 → 사전 분석 캐싱 ────────────────────────
+  const handlePrepare = async () => {
     if (!user)              { showToast("Please sign in to use the Pronunciation Coach."); return; }
-    if (!file)              { showToast("Please upload or record an audio file."); return; }
     if (!targetText.trim()) { showToast("Please enter a target sentence."); return; }
+
+    setPreparing(true);
+    try {
+      await prepareAnalysis(targetText);
+      setTextReady(true);
+      setFile(null);
+      setActiveResult(null);
+      setSelectedId(null);
+    } catch {
+      showToast("Failed to prepare. Please try again.");
+    } finally {
+      setPreparing(false);
+    }
+  };
+
+  // ─── Step 2: 오디오 분석 ─────────────────────────────────────
+  const handleSend = async () => {
+    if (!file) { showToast("Please upload or record an audio file."); return; }
 
     setActiveResult(null);
     setSelectedId(null);
 
     const res = await runLangGraphProcess(file, user, targetText);
-    console.log("########## res:", res);  
     if (res) {
       setActiveResult(res);
-      // 분석 완료 후 히스토리 목록 갱신
       await loadHistory();
     }
   };
@@ -152,35 +170,60 @@ function Coach() {
           </div>
         </div>
 
-        {/* Target Sentence */}
+        {/* Step 1: Target Sentence */}
         <div className="sb-card">
-          <div className="sb-card-label">📝 Target Sentence</div>
-          <TargetTextInput value={targetText} onChange={setTargetText} />
+          <div className="sb-card-label">📝 Step 1 — Target Sentence</div>
+          <TargetTextInput
+            value={targetText}
+            onChange={(v) => { setTargetText(v); setTextReady(false); }}
+            disabled={preparing}
+          />
+          <div className="sb-send-row" style={{ marginTop: "12px" }}>
+            <button
+              className="sb-btn sb-btn-primary"
+              onClick={handlePrepare}
+              disabled={preparing || !targetText.trim()}
+            >
+              {preparing ? (
+                <>
+                  <span className="sb-spinner" style={{ borderTopColor: "white" }} />
+                  Preparing…
+                </>
+              ) : textReady ? (
+                "✅ Sentence Set — Change?"
+              ) : (
+                "Set Sentence"
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* Audio */}
-        <div className="sb-card">
-          <div className="sb-card-label">🎤 Your Voice</div>
-          <AudioUploader file={file} setFile={setFile} />
-        </div>
+        {/* Step 2: Audio (문장 제출 후에만 표시) */}
+        {textReady && (
+          <>
+            <div className="sb-card">
+              <div className="sb-card-label">🎤 Step 2 — Your Voice</div>
+              <AudioUploader file={file} setFile={setFile} />
+            </div>
 
-        {/* Send Row */}
-        <div className="sb-send-row">
-          <button
-            className="sb-btn sb-btn-primary sb-btn-lg"
-            onClick={handleSend}
-            disabled={analyzing}
-          >
-            {analyzing ? (
-              <>
-                <span className="sb-spinner" style={{ borderTopColor: "white" }} />
-                Analyzing…
-              </>
-            ) : (
-              "✨ Analyze Pronunciation"
-            )}
-          </button>
-        </div>
+            <div className="sb-send-row">
+              <button
+                className="sb-btn sb-btn-primary sb-btn-lg"
+                onClick={handleSend}
+                disabled={analyzing || !file}
+              >
+                {analyzing ? (
+                  <>
+                    <span className="sb-spinner" style={{ borderTopColor: "white" }} />
+                    Analyzing…
+                  </>
+                ) : (
+                  "✨ Analyze Pronunciation"
+                )}
+              </button>
+            </div>
+          </>
+        )}
 
         {/* 히스토리 상세 로딩 */}
         {detailLoading && (
