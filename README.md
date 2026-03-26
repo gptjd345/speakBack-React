@@ -64,6 +64,50 @@
 
 ---
 
+## ERD
+
+```
+users
+├── id              INTEGER PK
+├── username        VARCHAR(50) UNIQUE
+├── email           VARCHAR(100) UNIQUE
+├── password        VARCHAR(255)
+├── token_version   INTEGER          -- Redis 토큰 무효화용 버전 관리
+└── created_at      DATETIME
+
+refresh_tokens
+├── id              INTEGER PK
+├── user_id         INTEGER FK → users.id
+├── jti             VARCHAR(64) UNIQUE  -- JWT ID (재사용 감지)
+├── expires_at      DATETIME
+├── revoked_at      DATETIME NULLABLE  -- 무효화 시각
+└── created_at      DATETIME
+
+session_history
+├── id              INTEGER PK
+├── user_id         INTEGER FK → users.id
+├── target_text     TEXT             -- 목표 문장
+├── user_transcript TEXT             -- STT 변환 결과
+├── score           FLOAT            -- GPT 평가 점수 (0~100)
+├── strengths       JSON             -- 잘한 부분 ["word", ...]
+├── improvements    JSON             -- 개선 필요 ["word", ...]
+├── rhythm_feedback TEXT             -- 리듬 피드백
+└── created_at      DATETIME
+
+session_patterns                     -- RAG 검색용 벡터 테이블
+├── id              INTEGER PK
+├── session_id      INTEGER FK → session_history.id
+├── user_id         INTEGER FK → users.id
+├── pattern_text    TEXT             -- 임베딩 원본 텍스트
+├── weak_words      JSON             -- 강세가 약했던 내용어
+├── transcript_mismatches JSON       -- target vs STT 불일치 단어
+├── score           FLOAT
+├── embedding       VECTOR(1536)     -- text-embedding-3-small (pgvector)
+└── created_at      DATETIME
+```
+
+---
+
 ## 설계 고민 기록
 
 - [발음 분석 파이프라인 설계](docs/pronunciation-pipeline.md)
