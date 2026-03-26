@@ -12,6 +12,7 @@ import wave, json, os
 from pydub import AudioSegment, silence
 import io
 import subprocess
+import numpy as np
 
 from openai import OpenAI
 from app.core.redis import redis_client
@@ -334,10 +335,7 @@ For each word, determine:
 - omission_acceptable: true if omitting this word is natural in casual speech
 
 Also identify:
-1. nuclear_stress_word: the single word carrying the strongest sentence-level stress.
-   This is usually the last content word, or a word carrying new/contrastive information.
-
-2. compound_nouns: list of compound nouns in the sentence.
+compound_nouns: list of compound nouns in the sentence.
    Compound nouns always stress the FIRST element (e.g., "SHOW dog", "HIGH school").
    The second element gets lighter stress — do NOT penalize this lighter stress.
 
@@ -345,7 +343,6 @@ RULES:
 - Judge from CONVERSATIONAL context, not formal/written context
 - Personal pronouns like "I" at the start of a personal statement are often low weight
 - Function words (articles, prepositions, auxiliaries) are almost always low weight
-- The nuclear stress word is the most critical word to evaluate
 
 Return JSON only."""
 
@@ -366,7 +363,6 @@ Return this exact format:
   ],
   "key_focus_words": ["word1", "word2"],
   "natural_weak_words": ["word1", "word2"],
-  "nuclear_stress_word": "the single most stressed word in the sentence",
   "compound_nouns": [
     {{
       "compound": "full compound noun phrase",
@@ -417,8 +413,18 @@ def evaluate_pronunciation(target_text: str, user_audio_path: str, tutor_type: s
     key_focus         = text_analysis.get("key_focus_words", [])
     natural_weak      = text_analysis.get("natural_weak_words", [])
     word_details      = text_analysis.get("words", [])
-    nuclear_word      = text_analysis.get("nuclear_stress_word", "")
     compound_nouns    = text_analysis.get("compound_nouns", [])
+
+    # Monotone 감지: 전체 단어 에너지의 변동계수(CV = std/mean)
+    # CV가 낮을수록 에너지가 평탄 → 강세 없는 발화
+    energies = [f["rms_energy"] for f in acoustic_features if f["rms_energy"] > 0]
+    if len(energies) >= 2:
+        energy_mean = float(np.mean(energies))
+        energy_cv   = float(np.std(energies) / energy_mean) if energy_mean > 0 else 0.0
+        is_monotone = energy_cv < 0.15
+    else:
+        energy_cv   = 0.0
+        is_monotone = False
 
     # communicative weight 요약 (Step 1 결과)
     weight_parts = []
@@ -448,8 +454,44 @@ def evaluate_pronunciation(target_text: str, user_audio_path: str, tutor_type: s
         )
     compound_lines = "\n".join(compound_parts) if compound_parts else "  (none)"
 
+    # 기능어 평균 에너지 계산 → 내용어 강세 위반 사전 계산
+    word_weight_map = {
+        w.get("word", "").lower().strip(".,!?'"): w.get("communicative_weight", "low")
+        for w in word_details
+    }
+
+    function_word_energies = [
+        f["rms_energy"]
+        for f in acoustic_features
+        if word_weight_map.get(f["word"].lower().strip(".,!?'"), "low") == "low"
+        and f["rms_energy"] > 0
+    ]
+    func_mean_energy = float(np.mean(function_word_energies)) if function_word_energies else 0.0
+
+    stress_violation_parts = []
+    for f in acoustic_features:
+        w_key = f["word"].lower().strip(".,!?'")
+        weight = word_weight_map.get(w_key, "low")
+        if weight in ("high", "medium") and func_mean_energy > 0:
+            if f["rms_energy"] < func_mean_energy:
+                stress_violation_parts.append(
+                    f"  STRESS WEAK: '{f['word']}' (weight={weight}) "
+                    f"energy={f['rms_energy']:.4f} < func_mean={func_mean_energy:.4f}"
+                )
+    stress_violation_lines = (
+        "\n".join(stress_violation_parts)
+        if stress_violation_parts
+        else "  (none — all content words are above function word mean)"
+    )
+
     # 음향 분석 요약 (Step 2 결과)
     acoustic_lines = _format_acoustic_for_prompt(acoustic_features)
+
+    monotone_line = (
+        f"  Energy variation (CV): {energy_cv:.2f} — "
+        + ("WARNING: delivery is flat/monotone. No word stands out clearly." if is_monotone
+           else "OK: energy contrast is present.")
+    )
 
     system_prompt = """You are an encouraging English pronunciation coach.
 The learner's goal is NOT to sound like a native speaker - it is to communicate clearly enough that native speakers understand them without effort.
@@ -457,8 +499,8 @@ Your job is to help them build confidence while improving, not to nitpick perfec
 
 You are given three types of data:
 1. Communicative weight per word - how important each word is for communication.
-2. Stress rules - nuclear stress word and compound noun stress patterns.
-3. Acoustic features - energy RANK per word (rank 1 = highest energy in sentence).
+2. Stress rules - compound noun stress patterns.
+3. Acoustic features - energy RANK per word (rank 1 = highest energy in sentence) and energy variation.
 
 CORE EVALUATION QUESTION:
 "Would a native speaker understand this without effort?"
@@ -470,14 +512,21 @@ CORE EVALUATION QUESTION:
 STRESS IS NOT BINARY. Do not expect dramatic, exaggerated stress.
 Evaluate by relative rank among neighboring words, not absolute energy.
 
-STRESS EVALUATION RULE - judge by content words, not function words:
-- Look at each HIGH or MEDIUM weight content word and compare its energy rank against nearby function words.
-- If a content word ranks LOWER (weaker) than a neighboring function word -> potential issue.
-- Minor inversions (1-2 rank difference) are acceptable - do NOT penalize.
-- Penalize only when a content word is clearly and consistently weaker than surrounding function words.
-- nuclear_stress_word should rank higher than the function words around it. If not, note it gently.
-- compound noun: primary_stress_on word should rank higher than its secondary words. If it does, all good.
-- Never evaluate function words in isolation - only use them as a reference point for content word comparison.
+STRESS EVALUATION RULES:
+1. Content word vs function word:
+   - Pre-computed stress violations are provided under [4] below.
+   - Any HIGH or MEDIUM weight content word whose energy is below the function word mean energy is flagged as STRESS WEAK.
+   - Penalize each flagged word — these are real stress errors, not minor variation.
+   - Content words NOT flagged are fine even if some are weaker than adjacent function words (natural in word clusters).
+   - Never evaluate function words in isolation.
+
+2. Monotone delivery:
+   - If energy variation (CV) is below 0.15, the delivery is flat — no word stands out.
+   - Flat delivery makes it harder for native speakers to parse the sentence, even if all words are correct.
+   - Penalize monotone delivery and suggest adding contrast between content and function words.
+
+3. Compound nouns:
+   - The primary_stress_on word should rank higher than secondary words within the compound.
 
 FEEDBACK TONE:
 - Frame improvements as "would sound even more natural if..." not "this was wrong".
@@ -494,14 +543,17 @@ Return JSON only."""
         "Key words that MUST be clear: {key_focus}\n"
         "Words where reduction/omission is NATURAL: {natural_weak}\n\n"
         "[2] Stress rules:\n"
-        "  Nuclear stress word (most critical): '{nuclear_word}'\n"
         "  Compound noun stress patterns:\n{compound_lines}\n\n"
-        "[3] Acoustic features (measured from audio):\n{acoustic_lines}\n\n"
+        "[3] Acoustic features (measured from audio):\n"
+        "{monotone_line}\n"
+        "{acoustic_lines}\n\n"
+        "[4] Pre-computed stress violations (content word energy < function word mean={func_mean_energy:.4f}):\n"
+        "{stress_violation_lines}\n\n"
         "Evaluate and return:\n"
         "{{\n"
         '  "score": 0-100,\n'
         '  "strengths": ["specific observations referencing actual words"],\n'
-        '  "improvements": ["specific actionable feedback, focus on nuclear stress and key words"],\n'
+        '  "improvements": ["specific actionable feedback referencing actual words"],\n'
         '  "rhythm_feedback": "one sentence on stress pattern and linking quality",\n'
         '  "feedback": []\n'
         "}}"
@@ -513,9 +565,11 @@ Return JSON only."""
         weight_lines=weight_lines,
         key_focus=key_focus,
         natural_weak=natural_weak,
-        nuclear_word=nuclear_word,
         compound_lines=compound_lines,
+        monotone_line=monotone_line,
         acoustic_lines=acoustic_lines if acoustic_lines else "  (no timestamp data available)",
+        func_mean_energy=func_mean_energy,
+        stress_violation_lines=stress_violation_lines,
     )
 
     # AI 호출
