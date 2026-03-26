@@ -1,101 +1,82 @@
 # SpeakBack
 
-English pronunciation coaching web application powered by Whisper STT, OpenAI TTS, and GPT-4o-mini.
+영어 발음 교정 웹 애플리케이션.
+목표는 **native-level 발음이 아닌, native speaker와 무리없이 소통 가능한 발음**의 습득.
+
+음성을 업로드하거나 녹음하면 강세·리듬 패턴을 분석해 피드백을 제공하고,
+누적된 세션 이력을 벡터 DB에 임베딩하여 개인화된 연습 문장을 생성합니다.
 
 ---
 
-## Tech Stack
+## 주요 기능
 
-| | |
+| 기능 | 설명 |
 |---|---|
-| **Frontend** | React |
-| **Backend** | FastAPI, Uvicorn |
-| **AI** | Whisper API (STT), OpenAI TTS, GPT-4o-mini |
-| **Infra** | Docker Compose, PostgreSQL, Redis, AWS S3 |
-| **Auth** | JWT (Access / Refresh Token) |
-| **Pipeline** | LangGraph |
+| **Pronunciation Coach** | 목표 문장 입력 → 음성 녹음/업로드 → 강세·리듬 분석 + GPT 피드백 |
+| **Practice Lab** | 과거 세션 패턴을 RAG로 분석 → 취약 패턴 타겟 연습 문장 3개 생성 |
+| **Session History** | 세션별 점수·피드백 이력 조회 |
+| **JWT 인증** | Access/Refresh Token Rotation, Redis 기반 token_version 검증 |
 
 ---
 
-## Architecture
+## 기술 스택
+
+| 영역 | 기술 |
+|---|---|
+| **Frontend** | React, Axios |
+| **Backend** | FastAPI, LangGraph |
+| **AI** | OpenAI Whisper API (STT), OpenAI TTS, GPT-4o-mini |
+| **Audio** | librosa (RMS energy, pyin pitch), ffmpeg |
+| **DB** | PostgreSQL + pgvector, Redis, AWS S3 |
+| **Infra** | Docker Compose, Alembic |
+
+---
+
+## 시스템 아키텍처
 
 ```
 [React]
-  │  Authorization: Bearer {access_token}
-  │  X-Refresh-Token: {refresh_token}
-  ▼
-[FastAPI]
-  ├─ /auth/login        → issue access + refresh token
-  ├─ /auth/me           → verify token_version via Redis (no DB query)
-  ├─ /auth/refresh      → Refresh Token Rotation
-  └─ /auth/logout       → revoke refresh token
-  │
-  ├─ [PostgreSQL]       refresh_tokens, users, session_history tables
-  └─ [Redis]            token_version cache, TTS audio cache (6h TTL)
+  ├─ POST /api/analyze/upload-url  → Presigned URL 발급
+  ├─ PUT  {presigned_url}          → S3 직접 업로드 (FastAPI 우회)
+  ├─ POST /api/analyze/prepare     → communicative weight + TTS 사전 캐싱
+  └─ POST /api/analyze/process     → 분석 실행
 
-[File Upload Flow]
-  React
-    → POST /api/analyze/upload-url  → FastAPI generates S3 Presigned URL
-    → PUT {presigned_url}           → React uploads directly to S3 (bypass FastAPI)
-    → POST /api/analyze/process     → FastAPI downloads from S3 → pipeline → delete S3 file
+[Pronunciation Pipeline (LangGraph)]
+  S3 다운로드
+  → ffmpeg (16kHz mono wav 정규화)
+  → Whisper API (STT + word timestamps)    ─┐
+  → OpenAI TTS (참고 음성 생성)              ├─ 병렬 실행
+  → GPT communicative weight 분석          ─┘
+  → librosa acoustic analysis (단어별 RMS energy, 연음 감지)
+  → GPT 평가 (강세 패턴 + intelligibility → 점수 + 피드백)
+  → session_history 저장 + session_patterns 임베딩 저장
 
-[Pronunciation Pipeline]
-  FastAPI
-    → S3 download
-    → ffmpeg (normalize to 16kHz mono wav)
-    → Whisper API (STT) + OpenAI TTS (parallel)
-    → GPT-4o-mini (scoring + feedback)
-    → Save to session_history (DB)
-    → Response
+[Practice Lab (RAG)]
+  최근 세션 패턴 벡터 → pgvector 유사도 검색
+  → 반복 취약 패턴 추출 (weak_words, Whisper mismatch 빈도)
+  → GPT 개인화 피드백 + 연습 문장 3개 생성 (informal / neutral / formal)
 
-[Session History]
-  GET /api/history/         → list (limit 20)
-  GET /api/history/{id}     → detail
+[Auth]
+  Login → access token (30m) + refresh token (14d) 발급
+  /me   → JWT 검증 + Redis token_version 비교 (DB 쿼리 없음)
+  /refresh → Refresh Token Rotation (재사용 감지 시 전체 세션 무효화)
 ```
 
 ---
 
-## Auth Flow
+## 설계 고민 기록
 
-**Login**
-- Issue access token (30m) + refresh token (14d)
-- Cache `token_version` in Redis
-
-**`/me`**
-- Verify JWT signature
-- Compare `token_version` in payload vs Redis — no DB query
-
-**`/refresh` — Refresh Token Rotation**
-- Revoke current refresh token, issue new one
-- If reuse detected → revoke all sessions + increment `token_version`
-
-**Logout**
-- Revoke refresh token in DB
+- [발음 분석 파이프라인 설계](docs/pronunciation-pipeline.md)
+- [RAG 아키텍처 설계](docs/rag-architecture.md)
 
 ---
 
-## S3 File Upload
+## 실행 방법
 
-Audio files are uploaded directly to S3 via Presigned URL, bypassing the FastAPI server.
-
-- Max file size: **25MB**
-- Files are stored under `uploads/` prefix
-- S3 Lifecycle rule automatically deletes files after **24 hours**
-- FastAPI deletes the file immediately after analysis completes
-
-**Required AWS setup**
-1. S3 bucket with CORS configured for `PUT` from your frontend origin
-2. S3 Lifecycle rule: `uploads/` prefix → expire after 1 day
-3. IAM user with minimal permissions (`s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` on `uploads/*`)
-
----
-
-## Getting Started
-
-**Requirements**
+**Prerequisites**
 - Docker, Docker Compose
 - OpenAI API Key
-- AWS account (S3 bucket + IAM user)
+- AWS S3 버킷 + IAM 사용자
 
 **1. Clone**
 ```bash
@@ -103,17 +84,15 @@ git clone https://github.com/gptjd345/speakBack-React.git
 cd speakBack-React
 ```
 
-**2. Configure environment**
-```bash
-cp .env.example .env
-# fill in the following:
-```
+**2. 환경 변수 설정**
 
 `backend/.env`
 ```env
 OPENAI_API_KEY=
 JWT_SECRET_KEY=
-DATABASE_URL=
+DATABASE_URL=postgresql+psycopg2://user:pass@postgres:5432/dbname
+REDIS_HOST=redis
+REDIS_PORT=6379
 
 AWS_REGION=ap-northeast-2
 AWS_ACCESS_KEY_ID=
@@ -121,31 +100,43 @@ AWS_SECRET_ACCESS_KEY=
 S3_BUCKET=
 ```
 
-**3. Run**
+**3. 실행**
 ```bash
+cd backend
 docker compose up --build
 ```
 
-**4. DB migration**
+**4. DB 마이그레이션**
 ```bash
 docker compose exec fastapi alembic upgrade head
 ```
 
-Frontend: http://localhost:3000  
-Backend: http://localhost:8000/docs
+**5. 프론트엔드**
+```bash
+cd frontend
+npm install
+npm start
+```
+
+- Frontend: http://localhost:3000
+- Backend API Docs: http://localhost:8000/docs
 
 ---
 
-## Project Structure
+## 프로젝트 구조
 
 ```
 speakBack-React/
-├── frontend/          # React
+├── frontend/                   # React
+│   └── src/
+│       ├── pages/              # Coach, Lab, Home
+│       ├── components/         # AudioUploader, ResultViewer, Sidebar
+│       └── hooks/              # useLangGraph
 └── backend/
     ├── app/
-    │   ├── routes/    # auth, analyze, history
-    │   ├── core/      # security, redis, s3
-    │   ├── db/        # models (users, refresh_tokens, session_history)
-    │   └── langgraph/ # STT → TTS → GPT pipeline
-    └── alembic/       # DB migrations
+    │   ├── routes/             # auth, analyze, history, lab
+    │   ├── core/               # security, redis, s3, embedding
+    │   ├── db/                 # models: users, session_history, session_patterns
+    │   └── langgraph_config/   # pronunciation pipeline (builder, pronunciation_module)
+    └── alembic/                # DB 마이그레이션
 ```

@@ -18,4 +18,3 @@ pydantic-settings
 pydub
 boto3
 pgvector
-ragas
