@@ -1,9 +1,12 @@
-#routes.py
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+# routes.py
+from fastapi import APIRouter, Form, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from app.langgraph_config.graph_runner import run_pipeline
 from app.core.dependencies import get_current_user
 from app.core.s3 import generate_presigned_upload_url, download_file_bytes, delete_file
+from app.services.analysis_result import save_analysis_result
+import asyncio, json, tempfile, os
+from concurrent.futures import ThreadPoolExecutor
 
 
 router = APIRouter()
@@ -24,33 +27,38 @@ def get_upload_url(
     body: PresignedUrlRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """
-    프론트가 S3에 직접 업로드할 수 있는 Presigned PUT URL 반환
-    """
     result = generate_presigned_upload_url(
         original_filename=body.filename,
         content_type=body.content_type,
     )
     return result
 
+
+# ─── Sentence Suggestion (LangGraph tool-calling) ────────────────
+class SuggestRequest(BaseModel):
+    target_text: str
+
+
+@router.post("/suggest")
+def suggest_sentences(
+    body: SuggestRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    from app.agents.suggest_graph import run_suggest
+    return run_suggest(body.target_text)
+
+
 # ─── 1.5단계: target text 사전 분석 (캐시 워밍) ─────────────────
 class PrepareRequest(BaseModel):
     target_text: str
+
 
 @router.post("/prepare")
 def prepare_analysis(
     body: PrepareRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """
-    target_text를 받아 communicative weight 분석 + TTS를 미리 실행해 Redis에 캐싱.
-    오디오 없이 실행 가능. 이후 /process 호출 시 캐시 히트로 빠르게 처리됨.
-    """
-    from app.langgraph_config.pronunciation_module import (
-        analyze_communicative_weight,
-        tts_generate_us,
-    )
-    from concurrent.futures import ThreadPoolExecutor
+    from app.services.pronunciation import analyze_communicative_weight, tts_generate_us
 
     with ThreadPoolExecutor() as executor:
         executor.submit(analyze_communicative_weight, body.target_text)
@@ -59,36 +67,81 @@ def prepare_analysis(
     return {"status": "ready"}
 
 
-# ─── 2단계: s3_key로 분석 실행 ───────────────────────────────────
-@router.post("/process")
-async def process_audio(
+# ─── SSE: 분석 진행 상황 스트리밍 ─────────────────────────────────
+@router.post("/process/stream")
+async def process_audio_stream(
     s3_key: str = Form(...),
-    user_name: str = Form(...), 
+    user_name: str = Form(...),
     target_text: str = Form(...),
     original_filename: str = Form(default="audio.wav"),
     current_user: dict = Depends(get_current_user),
 ):
-    """
-    S3에 업로드된 파일을 가져와 분석 실행
-    분석 완료 후 S3 파일 즉시 삭제
-    """
-    # S3에서 파일 다운로드
-    try:
-        audio_bytes = download_file_bytes(s3_key)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"S3 파일 조회 실패: {str(e)}")
-    
-    # 분석 실행
-    try:
-        result = run_pipeline(
-            audio_file=audio_bytes,
-            user_name=user_name,
-            target_text=target_text,
-            user_id=current_user["id"],
-            original_filename=original_filename,
-        )
-    finally:
-        # 성공/실패 관계없이 S3 파일 삭제
-        delete_file(s3_key)
+    loop = asyncio.get_event_loop()
+    queue: asyncio.Queue = asyncio.Queue()
 
-    return result
+    def _run():
+        tmp_src = tmp_dst = None
+        try:
+            from app.services.pronunciation import evaluate_pronunciation
+            import subprocess, base64
+
+            # S3 다운로드 + ffmpeg 변환
+            loop.call_soon_threadsafe(queue.put_nowait, {"step": 0, "total": 3, "status": "오디오 다운로드 중..."})
+            audio_bytes = download_file_bytes(s3_key)
+
+            _, ext = os.path.splitext(original_filename)
+            ext = ext.lower() if ext else ".bin"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as f:
+                f.write(audio_bytes)
+                tmp_src = f.name
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+                tmp_dst = f.name
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", tmp_src, "-ar", "16000", "-ac", "1", "-f", "wav", tmp_dst],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+            )
+
+            # 발음 평가
+            def on_progress(step, total, status):
+                loop.call_soon_threadsafe(queue.put_nowait, {"step": step, "total": total, "status": status})
+
+            result = evaluate_pronunciation(target_text, tmp_dst, "us", on_progress=on_progress)
+
+            # DB 저장
+            save_analysis_result(
+                user_id=current_user["id"],
+                target_text=target_text,
+                user_name=user_name,
+                user_transcript=result.get("user_transcript"),
+                score=result.get("score"),
+                strengths=result.get("strengths", []),
+                improvements=result.get("improvements", []),
+                rhythm_feedback=result.get("rhythm_feedback"),
+            )
+
+            # 최종 결과 전송
+            serializable = {k: v for k, v in result.items() if k != "reference_tts"}
+            serializable["us_audio"] = base64.b64encode(result.get("reference_tts") or b"").decode()
+            loop.call_soon_threadsafe(queue.put_nowait, {"done": True, "result": serializable})
+
+        except Exception as e:
+            loop.call_soon_threadsafe(queue.put_nowait, {"error": str(e)})
+        finally:
+            delete_file(s3_key)
+            for path in [tmp_src, tmp_dst]:
+                if path and os.path.exists(path):
+                    os.remove(path)
+
+    async def generate():
+        ThreadPoolExecutor(max_workers=1).submit(_run)
+        while True:
+            msg = await queue.get()
+            yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
+            if msg.get("done") or msg.get("error"):
+                break
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

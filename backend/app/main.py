@@ -5,7 +5,7 @@ from app.routes.langgraph_routes import router as analyze_router
 from app.routes.history_routes import router as history_router
 from app.routes.lab_routes import router as lab_router
 from app.db.database import Base, engine
-from app.langgraph_config.pronunciation_module import warmup_librosa
+from app.services.pronunciation import warmup_librosa
 
 app = FastAPI(title="SpeakBack API")
 

@@ -1,5 +1,3 @@
-from .store import global_store
-
 import hashlib
 import base64
 import threading
@@ -239,7 +237,7 @@ def trim_audio(audio_bytes: bytes, silence_thresh=-40, min_silence_len=200) -> b
     - min_silence_len: 제거할 최소 무음 길이(ms)
     """
     audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format="wav")
-    
+
     silences = silence.detect_silence(
         audio,
         silence_thresh=silence_thresh,
@@ -297,7 +295,7 @@ def tts_generate_us(text: str) -> tuple[bytes, float]:
     duration_sec = len(seg) / 1000.0
 
     return trimmed_bytes, duration_sec
-    
+
 # -----------------------------
 # Audio duration helper
 # -----------------------------
@@ -306,7 +304,7 @@ def get_audio_duration(file_path: str) -> float:
     with wave.open(file_path, "rb") as wf:
         frames = wf.getnframes()
         rate = wf.getframerate()
-        return frames / float(rate)   
+        return frames / float(rate)
 
 TEXT_ANALYSIS_CACHE_TTL = 60 * 60 * 24  # 24시간 (문장 분석은 변하지 않음)
 
@@ -385,11 +383,17 @@ Return this exact format:
     return result
 
 
-def evaluate_pronunciation(target_text: str, user_audio_path: str, tutor_type: str = "us"):
+def evaluate_pronunciation(target_text: str, user_audio_path: str, tutor_type: str = "us", on_progress=None):
     """
     전체 흐름: 사용자 오디오 → STT + TTS 병렬 처리 → 발음 평가 → 결과 반환
+    on_progress(step, total, status): 진행 상황 콜백 (SSE용)
     """
+    def _notify(step, total, status):
+        if on_progress:
+            on_progress(step, total, status)
+
     # 1) 텍스트 사전 분석 + TTS + STT 병렬 처리
+    _notify(1, 3, "음성 인식 중...")
     t0 = time.time()
     with ThreadPoolExecutor() as executor:
         text_analysis_future = executor.submit(analyze_communicative_weight, target_text)
@@ -402,6 +406,7 @@ def evaluate_pronunciation(target_text: str, user_audio_path: str, tutor_type: s
     print(f"[text_analysis+TTS+STT 병렬] {time.time()-t0:.2f}s")
 
     # 2) 사용자 발화 시간 + 음향 분석
+    _notify(2, 3, "음향 분석 중...")
     t1 = time.time()
     user_seg = AudioSegment.from_file(user_audio_path)
     user_duration = len(user_seg) / 1000.0
@@ -573,33 +578,29 @@ Return JSON only."""
     )
 
     # AI 호출
+    _notify(3, 3, "AI 평가 중...")
     t2 = time.time()
     ai_response = call_ai(system_prompt, user_prompt)
     print(f"[GPT 평가 호출] {time.time()-t2:.2f}s")
 
-    try :
+    try:
         result = json.loads(ai_response)
     except json.JSONDecodeError:
         result = {
-                "score": 0, 
-                "feedback": ["AI 응답 파싱 실패"], 
-                "user_transcript": user_transcript, 
-                "target_text": target_text
-            }
+            "score": 0,
+            "feedback": ["AI 응답 파싱 실패"],
+            "user_transcript": user_transcript,
+            "target_text": target_text
+        }
 
-
-    # 최종 결과
-    total_result = {
+    return {
         "score": result.get("score", 0),
         "feedback": result.get("feedback", []),
         "strengths": result.get("strengths", []),
         "improvements": result.get("improvements", []),
         "rhythm_feedback": result.get("rhythm_feedback", ""),
-        # "target_chunks": target_chunks,
-        "reference_tts": ref_audio,   # US tutor 음성 (wav 바이트)
+        "reference_tts": ref_audio,
         "user_transcript": user_transcript,
         "user_duration": user_duration,
-        "ref_duration": ref_duration
+        "ref_duration": ref_duration,
     }
-    return total_result
-

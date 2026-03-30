@@ -5,7 +5,7 @@ import AudioUploader from "../components/AudioUploader";
 import TargetTextInput from "../components/TargetTextInput";
 import ResultViewer from "../components/ResultViewer";
 import Toast from "../components/Toast";
-import { fetchHistory, fetchHistoryDetail, prepareAnalysis } from "../api/langgraphApi";
+import { fetchHistory, fetchHistoryDetail, prepareAnalysis, fetchSuggestions } from "../api/langgraphApi";
 import "../styles/Coach.css";
 
 // ─── 날짜 포맷 헬퍼 ──────────────────────────────────────────────
@@ -60,18 +60,79 @@ function HistoryPanel({ history, selectedId, onSelect, loading }) {
   );
 }
 
+// ─── Tone badge helper ────────────────────────────────────────────────────────
+const TONE_LABEL = { formal: "🎩 Formal", neutral: "😐 Neutral", informal: "😊 Informal" };
+const TONE_COLOR = { formal: "#3b82f6", neutral: "#6b7280", informal: "#f59e0b" };
+
+// ─── Suggestions Panel ────────────────────────────────────────────────────────
+function SuggestionsPanel({ suggestions }) {
+  const { tone, corrected_text, has_grammar_error, grammar_changes, suggestions: variants } = suggestions;
+
+  return (
+    <div className="sb-card sb-suggestions">
+      <div className="sb-card-label">💡 Sentence Analysis</div>
+
+      {/* Tone badge */}
+      <div className="sb-suggest-tone" style={{ borderColor: TONE_COLOR[tone] }}>
+        <span style={{ color: TONE_COLOR[tone], fontWeight: 700 }}>{TONE_LABEL[tone] ?? tone}</span>
+        <span className="sb-suggest-tone-label">detected tone</span>
+      </div>
+
+      {/* Grammar correction */}
+      {has_grammar_error ? (
+        <div className="sb-suggest-correction">
+          <div className="sb-suggest-correction-title">✏️ Grammar Correction</div>
+          <div className="sb-suggest-correction-text">{corrected_text}</div>
+          {grammar_changes?.length > 0 && (
+            <ul className="sb-suggest-changes">
+              {grammar_changes.map((c, i) => <li key={i}>{c}</li>)}
+            </ul>
+          )}
+        </div>
+      ) : (
+        <div className="sb-suggest-no-error">✅ No grammar errors found</div>
+      )}
+
+      {/* Variant cards */}
+      <div className="sb-suggest-variants">
+        {["formal", "neutral", "informal"].map((key) => {
+          const v = variants?.[key];
+          if (!v) return null;
+          return (
+            <div key={key} className="sb-suggest-variant" style={{ borderLeftColor: TONE_COLOR[key] }}>
+              <div className="sb-suggest-variant-title" style={{ color: TONE_COLOR[key] }}>
+                {TONE_LABEL[key]}
+              </div>
+              <div className="sb-suggest-variant-text">{v.converted}</div>
+              {v.changes?.length > 0 && (
+                <ul className="sb-suggest-changes">
+                  {v.changes.map((c, i) => <li key={i}>{c}</li>)}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Coach Page ───────────────────────────────────────────────────────────────
 function Coach() {
   const { user } = useAuth();
-  const { loading: analyzing, runLangGraphProcess } = useLangGraph();
+  const { loading: analyzing, analysisStatus, runLangGraphProcess } = useLangGraph();
 
   const [targetText, setTargetText]       = useState("");
   const [textReady, setTextReady]         = useState(false);  // 문장 제출 완료 여부
   const [preparing, setPreparing]         = useState(false);  // 사전 분석 중
   const [file, setFile]                   = useState(null);
 
+  // 문장 제안 (tone + correction + formal/neutral/informal)
+  const [suggestions, setSuggestions]   = useState(null);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+
   // 방금 분석한 결과
-  const [activeResult, setActiveResult] = useState(null);  
+  const [activeResult, setActiveResult] = useState(null);
 
   // 히스토리 목록
   const [history, setHistory]             = useState([]);
@@ -122,22 +183,29 @@ function Coach() {
     setTimeout(() => setToast({ show: false, message: "" }), 3000);
   };
 
-  // ─── Step 1: 문장 제출 → 사전 분석 캐싱 ────────────────────────
+  // ─── Step 1: 문장 제출 → 사전 분석 캐싱 + 문장 제안 ────────────
   const handlePrepare = async () => {
     if (!user)              { showToast("Please sign in to use the Pronunciation Coach."); return; }
     if (!targetText.trim()) { showToast("Please enter a target sentence."); return; }
 
     setPreparing(true);
+    setSuggestions(null);
     try {
-      await prepareAnalysis(targetText);
+      // 캐시 워밍과 문장 제안을 병렬 실행
+      const [, suggestResult] = await Promise.all([
+        prepareAnalysis(targetText),
+        fetchSuggestions(targetText).catch(() => null),
+      ]);
       setTextReady(true);
       setFile(null);
       setActiveResult(null);
       setSelectedId(null);
+      setSuggestions(suggestResult);
     } catch {
       showToast("Failed to prepare. Please try again.");
     } finally {
       setPreparing(false);
+      setSuggestLoading(false);
     }
   };
 
@@ -198,6 +266,17 @@ function Coach() {
           </div>
         </div>
 
+        {/* Suggestions (문장 제출 후 표시) */}
+        {preparing && (
+          <div className="sb-suggestions-loading">
+            <span className="sb-spinner" />
+            Analyzing sentence…
+          </div>
+        )}
+        {suggestions && (
+          <SuggestionsPanel suggestions={suggestions} />
+        )}
+
         {/* Step 2: Audio (문장 제출 후에만 표시) */}
         {textReady && (
           <>
@@ -222,6 +301,26 @@ function Coach() {
                 )}
               </button>
             </div>
+
+            {analyzing && analysisStatus && (
+              <div className="sb-analysis-progress">
+                {[
+                  { step: 0, label: "오디오 변환" },
+                  { step: 1, label: "음성 인식" },
+                  { step: 2, label: "음향 분석" },
+                  { step: 3, label: "AI 평가" },
+                ].map(({ step, label }) => {
+                  const done = analysisStatus.step > step;
+                  const active = analysisStatus.step === step;
+                  return (
+                    <div key={step} className={`sb-progress-step ${done ? "done" : active ? "active" : ""}`}>
+                      <span className="sb-progress-icon">{done ? "✅" : active ? "⏳" : "○"}</span>
+                      <span className="sb-progress-label">{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
 

@@ -113,3 +113,125 @@
   font-size: 0.73rem;
   color: var(--muted);
 }
+
+/* ─── Suggestions Loading ────────────── */
+.sb-suggestions-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+  color: var(--muted);
+  padding: 12px 0 4px;
+}
+
+/* ─── Suggestions Panel ──────────────── */
+.sb-suggestions {
+  margin-top: 16px;
+}
+
+.sb-suggest-tone {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1.5px solid;
+  border-radius: 20px;
+  padding: 4px 14px;
+  margin-bottom: 12px;
+  font-size: 0.85rem;
+}
+
+.sb-suggest-tone-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.sb-suggest-correction {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+
+.sb-suggest-correction-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--dark);
+  margin-bottom: 6px;
+}
+
+.sb-suggest-correction-text {
+  font-size: 0.92rem;
+  color: var(--text);
+}
+
+.sb-suggest-no-error {
+  font-size: 0.83rem;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.sb-suggest-changes {
+  margin: 6px 0 0 16px;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.sb-suggest-variants {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sb-suggest-variant {
+  border-left: 3px solid;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-radius: 0 8px 8px 0;
+}
+
+.sb-suggest-variant-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+  text-transform: capitalize;
+}
+
+.sb-suggest-variant-text {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+/* ─── Analysis Progress ───────────────── */
+.sb-analysis-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--surface);
+  border-radius: 10px;
+  margin-top: 4px;
+}
+
+.sb-progress-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.sb-progress-step.done {
+  color: var(--text);
+}
+
+.sb-progress-step.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sb-progress-icon {
+  width: 20px;
+  text-align: center;
+}
