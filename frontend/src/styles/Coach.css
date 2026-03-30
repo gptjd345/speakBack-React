@@ -164,11 +164,6 @@
   color: var(--text);
 }
 
-.sb-suggest-no-error {
-  font-size: 0.83rem;
-  color: var(--muted);
-  margin-bottom: 12px;
-}
 
 .sb-suggest-changes {
   margin: 6px 0 0 16px;

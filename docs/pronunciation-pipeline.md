@@ -218,7 +218,7 @@ def startup():
 
 ---
 
-## 11. 성능 최적화 (2단계 UI)
+## 11. 성능 최적화 (2단계 UI + SSE)
 
 **병목 구간**
 
@@ -228,12 +228,28 @@ def startup():
 | librosa 분석 | ~2초 |
 | GPT 평가 | ~5초 |
 
-**해결 전략**
+전체 약 8초로, 단순 HTTP 요청-응답 구조에서는 사용자가 응답 없는 화면을 8초간 기다려야 합니다.
 
-- 목표 문장 확정 시 선처리
-- `/prepare` API로 Redis 캐싱
+**해결 전략 1 — 2단계 UI + `/prepare` 사전 캐싱**
 
-→ 실제 분석 시 캐시 히트 → 응답 시간 단축
+- 목표 문장 확정 시 communicative weight 분석 + TTS를 미리 실행해 Redis에 캐싱
+- 실제 분석 요청 시 캐시 히트 → STT만 실시간 실행 → 응답 시간 단축
+
+**해결 전략 2 — SSE(Server-Sent Events) 진행 상황 스트리밍**
+
+- EventSource는 GET만 지원하므로, `fetch` API로 POST + ReadableStream 방식으로 구현
+- 분석 각 단계 완료 시 서버가 클라이언트로 진행 상황을 실시간 push
+
+```
+step 0: 오디오 다운로드 중...
+step 1: 음성 인식 중...
+step 2: 음향 분석 중...
+step 3: AI 평가 중...
+→ done: 최종 결과 전송
+```
+
+- 사용자는 결과를 기다리는 동안 현재 어느 단계인지 시각적으로 확인 가능
+- HTTP 연결을 유지한 채 서버가 단방향으로 데이터를 push하는 구조 (HTTP/1.1 chunked transfer)
 
 ---
 

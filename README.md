@@ -12,7 +12,8 @@
 
 | 기능 | 설명 |
 |---|---|
-| **Pronunciation Coach** | 목표 문장 입력 → 음성 녹음/업로드 → 강세·리듬 분석 + GPT 피드백 |
+| **Pronunciation Coach** | 목표 문장 입력 → 어조 분석·문법 교정·유사 문장 제안 → 음성 녹음/업로드 → 강세·리듬 분석 + GPT 피드백 |
+| **문장 제안** | LangGraph tool calling으로 어조(formal/neutral/informal) 감지, 문법 교정, 나머지 2가지 어조 변환문 제안 |
 | **Practice Lab** | 과거 세션 패턴을 RAG로 분석 → 취약 패턴 타겟 연습 문장 3개 생성 |
 | **Session History** | 세션별 점수·피드백 이력 조회 |
 | **JWT 인증** | Access/Refresh Token Rotation, Redis 기반 token_version 검증 |
@@ -24,7 +25,8 @@
 | 영역 | 기술 |
 |---|---|
 | **Frontend** | React, Axios |
-| **Backend** | FastAPI, LangGraph |
+| **Backend** | FastAPI |
+| **AI Agent** | LangGraph (tool calling 기반 문장 제안) |
 | **AI** | OpenAI Whisper API (STT), OpenAI TTS, GPT-4o-mini |
 | **Audio** | librosa (RMS energy, pyin pitch), ffmpeg |
 | **DB** | PostgreSQL + pgvector, Redis, AWS S3 |
@@ -36,12 +38,13 @@
 
 ```
 [React]
-  ├─ POST /api/analyze/upload-url  → Presigned URL 발급
-  ├─ PUT  {presigned_url}          → S3 직접 업로드 (FastAPI 우회)
-  ├─ POST /api/analyze/prepare     → communicative weight + TTS 사전 캐싱
-  └─ POST /api/analyze/process     → 분석 실행
+  ├─ POST /api/analyze/upload-url    → Presigned URL 발급
+  ├─ PUT  {presigned_url}            → S3 직접 업로드 (FastAPI 우회)
+  ├─ POST /api/analyze/prepare       → communicative weight + TTS 사전 캐싱
+  ├─ POST /api/analyze/suggest       → 문장 제안 (LangGraph agent)
+  └─ POST /api/analyze/process/stream → 발음 분석 (SSE 스트리밍)
 
-[Pronunciation Pipeline (LangGraph)]
+[Pronunciation Pipeline]
   S3 다운로드
   → ffmpeg (16kHz mono wav 정규화)
   → Whisper API (STT + word timestamps)    ─┐
@@ -50,15 +53,23 @@
   → librosa acoustic analysis (단어별 RMS energy, 연음 감지)
   → GPT 평가 (강세 패턴 + intelligibility → 점수 + 피드백)
   → session_history 저장 + session_patterns 임베딩 저장
+  ※ 각 단계 완료 시 SSE로 진행 상황을 프론트에 실시간 전송
+
+[Sentence Suggestion (LangGraph Agent)]
+  LLM이 입력 문장 분석
+  → report_analysis 툴 호출 (어조 감지 + 문법 교정)
+  → 해당 어조를 제외한 2개 convert 툴 동적 선택·실행
+     (convert_formal / convert_neutral / convert_informal)
+  → 최종 결과: 어조, 교정 문장, 2가지 변환 문장 반환
 
 [Practice Lab (RAG)]
   최근 세션 패턴 벡터 → pgvector 유사도 검색
   → 반복 취약 패턴 추출 (weak_words, Whisper mismatch 빈도)
-  → GPT 개인화 피드백 + 연습 문장 3개 생성 (informal / neutral / formal)
+  → GPT 개인화 피드백 + 연습 문장 3개 생성
 
 [Auth]
-  Login → access token (30m) + refresh token (14d) 발급
-  /me   → JWT 검증 + Redis token_version 비교 (DB 쿼리 없음)
+  Login   → access token (30m) + refresh token (14d) 발급
+  /me     → JWT 검증 + Redis token_version 비교 (DB 쿼리 없음)
   /refresh → Refresh Token Rotation (재사용 감지 시 전체 세션 무효화)
 ```
 
@@ -112,6 +123,7 @@ session_patterns                     -- RAG 검색용 벡터 테이블
 
 - [발음 분석 파이프라인 설계](docs/pronunciation-pipeline.md)
 - [RAG 아키텍처 설계](docs/rag-architecture.md)
+- [문장 제안 에이전트 설계](docs/suggest-agent.md)
 
 ---
 
@@ -175,12 +187,14 @@ speakBack-React/
 │   └── src/
 │       ├── pages/              # Coach, Lab, Home
 │       ├── components/         # AudioUploader, ResultViewer, Sidebar
+│       ├── api/                # langgraphApi, historyApi
 │       └── hooks/              # useLangGraph
 └── backend/
     ├── app/
     │   ├── routes/             # auth, analyze, history, lab
     │   ├── core/               # security, redis, s3, embedding
     │   ├── db/                 # models: users, session_history, session_patterns
-    │   └── langgraph_config/   # pronunciation pipeline (builder, pronunciation_module)
+    │   ├── services/           # pronunciation.py, analysis_result.py
+    │   └── agents/             # suggest_graph.py (LangGraph)
     └── alembic/                # DB 마이그레이션
 ```

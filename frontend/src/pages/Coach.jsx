@@ -78,24 +78,22 @@ function SuggestionsPanel({ suggestions }) {
         <span className="sb-suggest-tone-label">detected tone</span>
       </div>
 
-      {/* Grammar correction */}
-      {has_grammar_error ? (
-        <div className="sb-suggest-correction">
-          <div className="sb-suggest-correction-title">✏️ Grammar Correction</div>
-          <div className="sb-suggest-correction-text">{corrected_text}</div>
-          {grammar_changes?.length > 0 && (
-            <ul className="sb-suggest-changes">
-              {grammar_changes.map((c, i) => <li key={i}>{c}</li>)}
-            </ul>
-          )}
+      {/* Corrected / base sentence — 항상 표시 */}
+      <div className="sb-suggest-correction">
+        <div className="sb-suggest-correction-title">
+          {has_grammar_error ? "✏️ 교정된 문장" : "✅ 문법 오류 없음"}
         </div>
-      ) : (
-        <div className="sb-suggest-no-error">✅ No grammar errors found</div>
-      )}
+        <div className="sb-suggest-correction-text">{corrected_text}</div>
+        {has_grammar_error && grammar_changes?.length > 0 && (
+          <ul className="sb-suggest-changes">
+            {grammar_changes.map((c, i) => <li key={i}>{c}</li>)}
+          </ul>
+        )}
+      </div>
 
-      {/* Variant cards */}
+      {/* Variant cards — formal / informal만 표시 */}
       <div className="sb-suggest-variants">
-        {["formal", "neutral", "informal"].map((key) => {
+        {["formal", "informal"].map((key) => {
           const v = variants?.[key];
           if (!v) return null;
           return (

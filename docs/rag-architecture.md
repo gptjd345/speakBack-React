@@ -67,10 +67,10 @@ def build_pattern_text(improvements, transcript_mismatches, score):
 
 ### 임베딩 저장 시점
 
-Coach 세션 분석 완료 후 `db_save_node`에서 자동 저장합니다.
+Coach 세션 분석 완료 후 `save_analysis_result`에서 자동 저장합니다.
 
 ```python
-# builder.py db_save_node
+# services/analysis_result.py save_analysis_result
 mismatches = extract_transcript_mismatches(target_text, user_transcript)
 pattern_text = build_pattern_text(improvements, mismatches, score)
 embedding = get_embedding(pattern_text)  # Redis 7일 캐시
