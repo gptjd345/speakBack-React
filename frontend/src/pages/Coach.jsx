@@ -157,7 +157,7 @@ function Coach() {
 
   useEffect(() => {
     loadHistory(user);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── 히스토리 항목 클릭 → 상세 조회 ────────────────────────────
   const handleHistorySelect = async (id) => {
