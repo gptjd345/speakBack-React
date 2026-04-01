@@ -202,7 +202,6 @@ function Coach() {
       showToast("Failed to prepare. Please try again.");
     } finally {
       setPreparing(false);
-      setSuggestLoading(false);
     }
   };
 
