@@ -91,7 +91,7 @@ function Lab() {
       })
       .catch(() => {})
       .finally(() => setAnalysisLoading(false));
-  }, [user?.id]);
+  }, [user]);
 
   // ─── Start Practice: 연습 문장 생성 ────────────────────────────
   const handleStartPractice = async () => {

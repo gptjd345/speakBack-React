@@ -127,7 +127,6 @@ function Coach() {
 
   // 문장 제안 (tone + correction + formal/neutral/informal)
   const [suggestions, setSuggestions]   = useState(null);
-  const [suggestLoading, setSuggestLoading] = useState(false);
 
   // 방금 분석한 결과
   const [activeResult, setActiveResult] = useState(null);
@@ -143,8 +142,8 @@ function Coach() {
   const [toast, setToast] = useState({ show: false, message: "" });
 
   // ─── 히스토리 목록 로드 ─────────────────────────────────────────
-  const loadHistory = async () => {
-    if (!user) return;
+  async function loadHistory(currentUser) {
+    if (!currentUser) return;
     setHistoryLoading(true);
     try {
       const data = await fetchHistory(20);
@@ -154,11 +153,11 @@ function Coach() {
     } finally {
       setHistoryLoading(false);
     }
-  };
+  }
 
   useEffect(() => {
-    loadHistory();
-  }, [user?.id]);
+    loadHistory(user);
+  }, []);
 
   // ─── 히스토리 항목 클릭 → 상세 조회 ────────────────────────────
   const handleHistorySelect = async (id) => {
@@ -217,7 +216,7 @@ function Coach() {
     const res = await runLangGraphProcess(file, user, targetText);
     if (res) {
       setActiveResult(res);
-      await loadHistory();
+      await loadHistory(user);
     }
   };
 
