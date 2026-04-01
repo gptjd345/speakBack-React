@@ -85,5 +85,5 @@ jobs:
             cd ~/speakback
             export IMAGE_TAG=${{ github.sha }}
             export DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
-            docker compose -f docker-compose.prod.yml pull fastapi
-            docker compose -f docker-compose.prod.yml up -d --no-deps fastapi
+            docker compose --env-file .env.prod -f docker-compose.prod.yml pull
+            docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
