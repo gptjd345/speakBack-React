@@ -2,19 +2,20 @@
 LangGraph tool calling 기반 문장 제안 그래프.
 
 흐름:
-  analysis_node (LLM에 3개 툴 바인딩)
-    → ToolNode (선택된 툴 실행)
+  analysis_node (LLM — report_analysis만 바인딩)
+    → report_tools (report_analysis 실행)
+    → dispatch_node (tone 읽어서 convert 툴 결정 — 코드로)
+    → convert_tools (convert_formal / convert_informal 실행)
     → aggregate_node (툴 결과 수집 후 최종 출력)
 
 LLM 동작:
   1. 입력 문장의 어조 감지 (formal / neutral / informal)
   2. report_analysis 호출 (어조 + 문법 교정)
-  3. 추천 convert 툴 호출:
-     - formal  → convert_informal 1개
-     - informal → convert_formal 1개
-     - neutral  → convert_formal + convert_informal 2개
-  사용자에게 추천하는 어조는 formal/informal 두 가지만.
-  neutral은 어조 판단 기준으로만 사용.
+
+dispatch_node 동작 (코드):
+  - formal   → convert_informal 호출
+  - informal → convert_formal 호출
+  - neutral  → convert_formal + convert_informal 호출
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ import json
 from typing import Annotated, Any
 from typing_extensions import TypedDict
 
-from langchain_core.messages import AIMessage, ToolMessage, SystemMessage, HumanMessage
+from langchain_core.messages import ToolMessage, SystemMessage, HumanMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
@@ -93,16 +94,22 @@ def convert_informal(text: str, changes: list[str]) -> str:
     }, ensure_ascii=False)
 
 
-TOOLS = [report_analysis, convert_formal, convert_informal]
+REPORT_TOOLS = [report_analysis]
+CONVERT_TOOLS = [convert_formal, convert_informal]
 
 # ─── LLM ────────────────────────────────────────────────────────────────────
 
-def _make_llm():
+def _make_analysis_llm():
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
-    return llm.bind_tools(TOOLS)
+    return llm.bind_tools(REPORT_TOOLS)
 
 
-SYSTEM_PROMPT = """You are an English language coach. Given a target sentence, you must:
+def _make_convert_llm():
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
+    return llm.bind_tools(CONVERT_TOOLS)
+
+
+ANALYSIS_PROMPT = """You are an English language coach. Given a target sentence, you must:
 
 1. Detect the tone: one of 'formal', 'neutral', or 'informal'.
    - formal:   appropriate for official, professional, or public contexts. Polite and structured.
@@ -120,41 +127,54 @@ SYSTEM_PROMPT = """You are an English language coach. Given a target sentence, y
    Do NOT change word choice, phrasing, or style — preserve the user's original expression as much as possible.
    The goal is grammatical correctness, not naturalness.
 
-3. Call report_analysis with: tone, corrected text, whether there were grammar errors, and a list of changes.
+3. Call report_analysis with: tone, corrected text, whether there were grammar errors, and a list of changes."""
 
-4. Call convert tools based on the detected tone:
-   - formal   → call convert_informal only
-   - informal → call convert_formal only
-   - neutral  → call convert_formal AND convert_informal
+CONVERT_PROMPT = """You are an English language coach converting a sentence to a different register.
 
-   neutral is used only for classification — do NOT produce a neutral variant as output.
-
-You MUST call report_analysis in every response.
-Use the corrected text (not the original) as the input for the convert tools.
-
-Conversion guidelines — the two variants MUST sound clearly different from each other and from the original.
-Keep the original meaning intact — only change tone and structure, not the intent or content:
-
-formal:
-  - Polite, structured, appropriate for official or professional situations
-  - No contractions ("I am" not "I'm", "do not" not "don't")
-  - Measured phrasing: "I would like to", "Could you please", "I appreciate"
-  - Avoid slang, filler words, and abrupt phrasing
-  - Vocabulary can be simple — formality is about tone and structure, not complexity
-
-informal:
-  - Casual, warm, natural for conversation with friends or familiar people
-  - Contractions and colloquial expressions encouraged
-  - Shorter, spoken-rhythm sentences ("Hey, can you help me out?", "Sounds good!")
-  - Filler words like "kind of", "basically", "honestly" are fine
-  - Slang is acceptable if natural"""
+Conversion guidelines:
+- Keep the original meaning intact — only change tone and structure, not the intent or content
+- The converted sentence MUST be clearly different from the input sentence
+- For convert_formal: polite, structured, no contractions, measured phrasing ("I would like to", "Could you please")
+- For convert_informal: casual, warm, contractions encouraged, spoken-rhythm sentences, colloquial expressions fine"""
 
 
 # ─── Nodes ──────────────────────────────────────────────────────────────────
 
 def analysis_node(state: SuggestState) -> dict:
-    llm = _make_llm()
-    messages = [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"]
+    llm = _make_analysis_llm()
+    messages = [SystemMessage(content=ANALYSIS_PROMPT)] + state["messages"]
+    response = llm.invoke(messages)
+    return {"messages": [response]}
+
+
+def dispatch_node(state: SuggestState) -> dict:
+    """tone에 따라 호출할 convert 툴을 코드로 결정."""
+    # report_analysis 결과에서 tone과 corrected_text 추출
+    tone = "neutral"
+    corrected_text = ""
+    for msg in state["messages"]:
+        if isinstance(msg, ToolMessage) and msg.name == "report_analysis":
+            try:
+                data = json.loads(msg.content)
+                tone = data.get("tone", "neutral")
+                corrected_text = data.get("corrected_text", "")
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    # tone에 따라 convert 툴 결정
+    if tone == "formal":
+        tools_to_call = ["convert_informal"]
+    elif tone == "informal":
+        tools_to_call = ["convert_formal"]
+    else:  # neutral
+        tools_to_call = ["convert_formal", "convert_informal"]
+
+    llm = _make_convert_llm()
+    prompt = f"Convert the following sentence as instructed.\n\nSentence: {corrected_text}"
+    tool_names = " and ".join(tools_to_call)
+    prompt += f"\n\nCall: {tool_names}"
+
+    messages = [SystemMessage(content=CONVERT_PROMPT), HumanMessage(content=prompt)]
     response = llm.invoke(messages)
     return {"messages": [response]}
 
@@ -171,31 +191,25 @@ def aggregate_node(state: SuggestState) -> dict:
     return {"tool_results": tool_results}
 
 
-# ─── Routing ────────────────────────────────────────────────────────────────
-
-def should_use_tools(state: SuggestState) -> str:
-    last = state["messages"][-1]
-    if isinstance(last, AIMessage) and last.tool_calls:
-        return "tools"
-    return "aggregate"
-
 
 # ─── Graph ──────────────────────────────────────────────────────────────────
 
 def build_suggest_graph():
-    tool_node = ToolNode(TOOLS)
+    report_tool_node = ToolNode(REPORT_TOOLS)
+    convert_tool_node = ToolNode(CONVERT_TOOLS)
 
     graph = StateGraph(SuggestState)
     graph.add_node("analysis", analysis_node)
-    graph.add_node("tools", tool_node)
+    graph.add_node("report_tools", report_tool_node)
+    graph.add_node("dispatch", dispatch_node)
+    graph.add_node("convert_tools", convert_tool_node)
     graph.add_node("aggregate", aggregate_node)
 
     graph.set_entry_point("analysis")
-    graph.add_conditional_edges("analysis", should_use_tools, {
-        "tools": "tools",
-        "aggregate": "aggregate",
-    })
-    graph.add_edge("tools", "aggregate")
+    graph.add_edge("analysis", "report_tools")
+    graph.add_edge("report_tools", "dispatch")
+    graph.add_edge("dispatch", "convert_tools")
+    graph.add_edge("convert_tools", "aggregate")
     graph.add_edge("aggregate", END)
 
     return graph.compile()

@@ -5,7 +5,7 @@
 ## 1. 기능 목적
 
 사용자가 연습할 목표 문장을 입력하면, 해당 문장의 어조를 분석하고 문법을 교정한 뒤,
-나머지 두 가지 어조(formal / neutral / informal)로 변환한 문장을 함께 제안합니다.
+formal / informal 두 가지 어조로 변환한 문장을 함께 제안합니다.
 
 사용자는 본인이 원래 연습하려 했던 문장뿐만 아니라,
 같은 내용을 다른 맥락에서 어떻게 표현하는지도 함께 익힐 수 있습니다.
@@ -19,22 +19,24 @@
 
 반면 문장 제안은 다음과 같은 이유로 LangGraph가 적합합니다.
 
-- LLM이 입력 문장의 어조를 **런타임에 판단**해서 실행할 툴을 동적으로 선택
-- 어조가 formal이면 `convert_neutral` + `convert_informal`을 호출
-- 어조가 neutral이면 `convert_formal` + `convert_informal`을 호출
-- **실행 전까지 경로가 결정되지 않음** → 조건부 라우팅이 필요
+- LLM이 입력 문장의 어조를 **런타임에 판단**하고 `report_analysis`를 호출
+- 그 결과를 `dispatch_node`가 읽어 tone에 따라 실행할 convert 툴을 **코드로 결정**
+- 모든 엣지는 고정(순차)이지만 dispatch_node가 런타임에 LLM 호출 내용을 동적으로 구성
 
-ThreadPoolExecutor로는 이 동적 툴 선택 구조를 자연스럽게 표현할 수 없습니다.
+ThreadPoolExecutor로는 이 동적 툴 구성 구조를 자연스럽게 표현할 수 없습니다.
 
 ---
 
 ## 3. 그래프 구조
 
 ```
-analysis_node (LLM + 3개 툴 바인딩)
-    ↓ tool_calls 존재 여부로 라우팅
-  [tools 있음] → ToolNode (툴 실행)
-  [tools 없음] → aggregate_node
+analysis_node (LLM — report_analysis만 바인딩)
+    ↓
+report_tools (report_analysis 실행)
+    ↓
+dispatch_node (tone 읽어서 convert 툴 결정 — 코드로)
+    ↓
+convert_tools (convert_formal / convert_informal 실행)
     ↓
 aggregate_node (툴 결과 수집 → 최종 출력)
     ↓
@@ -45,40 +47,44 @@ aggregate_node (툴 결과 수집 → 최종 출력)
 
 | 노드 | 역할 |
 |---|---|
-| `analysis_node` | LLM이 문장 분석 후 툴 호출 결정 |
-| `ToolNode` | 선택된 툴 실행 (LangGraph 내장) |
+| `analysis_node` | LLM이 어조 감지 + 문법 교정 후 `report_analysis` 호출 |
+| `report_tools` | `report_analysis` 실행 (LangGraph ToolNode) |
+| `dispatch_node` | tone을 읽어 코드로 convert 툴 결정 및 호출 |
+| `convert_tools` | `convert_formal` / `convert_informal` 실행 (LangGraph ToolNode) |
 | `aggregate_node` | ToolMessage 결과를 dict로 수집 |
 
 ---
 
 ## 4. 툴 설계
 
-LLM에 3개의 툴을 바인딩합니다.
-
-| 툴 | 역할 |
-|---|---|
-| `report_analysis` | 어조 감지 + 문법 교정 결과 보고 |
-| `convert_formal` | 문장을 formal 어조로 변환 |
-| `convert_informal` | 문장을 informal 어조로 변환 |
+| 툴 | 바인딩 노드 | 역할 |
+|---|---|---|
+| `report_analysis` | `analysis_node` | 어조 감지 + 문법 교정 결과 보고 |
+| `convert_formal` | `dispatch_node` | 문장을 formal 어조로 변환 |
+| `convert_informal` | `dispatch_node` | 문장을 informal 어조로 변환 |
 
 `convert_neutral`은 제거했습니다. neutral은 스펙트럼(formal 쪽 neutral, informal 쪽 neutral)이라
 독립적인 추천 범주로 쓰기 애매하기 때문입니다. 어조 판단 기준으로만 활용합니다.
 
 ---
 
-## 5. LLM 동작 규칙 (시스템 프롬프트)
+## 5. 동작 규칙
 
+**analysis_node (LLM)**
 ```
 1. 입력 문장의 어조를 formal / neutral / informal 중 하나로 판단
 2. report_analysis 호출: 어조, 교정 문장, 문법 오류 여부, 변경 내역
    - 교정 범위: 주어-동사 일치, 시제, 관사, 전치사 등 구조적 오류만
    - 단어 선택·표현 방식·스타일은 원문 그대로 유지
-3. 어조에 따라 convert 툴 호출:
-   - formal   → convert_informal 1개
-   - informal → convert_formal 1개
-   - neutral  → convert_formal + convert_informal 2개
-4. convert 툴의 입력은 원문이 아닌 교정된 문장 사용
-5. 변환 시 원문의 의미는 그대로 유지 — 어조와 구조만 변경
+```
+
+**dispatch_node (코드)**
+```
+- formal   → convert_informal 호출
+- informal → convert_formal 호출
+- neutral  → convert_formal + convert_informal 호출
+- convert 툴의 입력은 교정된 문장 사용
+- 변환 시 원문의 의미는 그대로 유지 — 어조와 구조만 변경
 ```
 
 formal의 기준은 어휘 수준이 아닌 **상황 적절성**입니다.
@@ -113,6 +119,12 @@ formal/informal 입력이면 반대 어조 1개만 제안합니다.
 neutral은 formal과 informal 사이의 스펙트럼이라 독립적인 변환 목표로 삼기 어렵습니다.
 "formal에 가까운 neutral"과 "informal에 가까운 neutral"이 존재하므로, neutral을 추천하면 오히려 방향이 모호해집니다.
 사용자에게 의미 있는 선택지는 formal ↔ informal 두 방향이고, neutral은 현재 문장의 위치를 판단하는 기준으로만 씁니다.
+
+**convert 툴 선택을 LLM이 아닌 코드(dispatch_node)로 결정한 이유**
+
+LLM에게 프롬프트로 "informal이면 convert_formal만 호출하라"고 지시해도 일관성 있게 따르지 않는 문제가 있었습니다.
+tone은 `report_analysis` 결과에 이미 명시되어 있으므로, 이를 코드로 읽어 convert 툴을 결정하면
+프롬프트 의존 없이 항상 올바른 툴이 호출됩니다.
 
 **formal 정의를 어휘 수준이 아닌 상황 적절성으로 잡은 이유**
 
