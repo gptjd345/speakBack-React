@@ -98,7 +98,7 @@ TOOLS = [report_analysis, convert_formal, convert_informal]
 # ─── LLM ────────────────────────────────────────────────────────────────────
 
 def _make_llm():
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
     return llm.bind_tools(TOOLS)
 
 
@@ -111,6 +111,9 @@ SYSTEM_PROMPT = """You are an English language coach. Given a target sentence, y
    - neutral:  neither clearly formal nor clearly informal. Sits between the two.
 
 2. Check for grammar errors and correct them.
+   Fix only structural errors: subject-verb agreement, tense, articles, prepositions, missing/extra words.
+   Do NOT change word choice, phrasing, or style — preserve the user's original expression as much as possible.
+   The goal is grammatical correctness, not naturalness.
 
 3. Call report_analysis with: tone, corrected text, whether there were grammar errors, and a list of changes.
 

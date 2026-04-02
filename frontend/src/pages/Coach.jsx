@@ -81,7 +81,7 @@ function SuggestionsPanel({ suggestions }) {
       {/* Corrected / base sentence — 항상 표시 */}
       <div className="sb-suggest-correction">
         <div className="sb-suggest-correction-title">
-          {has_grammar_error ? "✏️ 교정된 문장" : "✅ 문법 오류 없음"}
+          {has_grammar_error ? "✏️ Corrected sentence" : "✅ No grammar errors"}
         </div>
         <div className="sb-suggest-correction-text">{corrected_text}</div>
         {has_grammar_error && grammar_changes?.length > 0 && (
