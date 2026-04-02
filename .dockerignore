@@ -1,0 +1,21 @@
+frontend/
+.git/
+.github/
+docs/
+*.md
+
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+
+# 환경변수
+backend/.env
+.env
+.env.prod
+
+# 기타
+*.log
+*.pem
