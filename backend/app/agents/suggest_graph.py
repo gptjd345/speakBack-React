@@ -98,7 +98,7 @@ TOOLS = [report_analysis, convert_formal, convert_informal]
 # ─── LLM ────────────────────────────────────────────────────────────────────
 
 def _make_llm():
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
     return llm.bind_tools(TOOLS)
 
 
@@ -107,8 +107,13 @@ SYSTEM_PROMPT = """You are an English language coach. Given a target sentence, y
 1. Detect the tone: one of 'formal', 'neutral', or 'informal'.
    - formal:   appropriate for official, professional, or public contexts. Polite and structured.
                Does NOT require complex vocabulary — simple words used formally count (e.g. "I would like to" vs "I want to").
+               e.g. "I would like to request...", "Please be advised...", "I appreciate your assistance."
    - informal: casual, conversational, for friends or familiar settings.
-   - neutral:  neither clearly formal nor clearly informal. Sits between the two.
+               e.g. "Hey, can you help me out?", "I was thinking maybe we could...", "That sounds good!"
+   - neutral:  neither clearly formal nor clearly informal.
+               Polite but not stiff. Natural but not casual.
+               e.g. "I could say...", "What if we tried...", "That might work."
+               Everyday professional or semi-social contexts.
 
 2. Check for grammar errors and correct them.
    Fix only structural errors: subject-verb agreement, tense, articles, prepositions, missing/extra words.
@@ -127,7 +132,8 @@ SYSTEM_PROMPT = """You are an English language coach. Given a target sentence, y
 You MUST call report_analysis in every response.
 Use the corrected text (not the original) as the input for the convert tools.
 
-Conversion guidelines — the two variants MUST sound clearly different from each other and from the original:
+Conversion guidelines — the two variants MUST sound clearly different from each other and from the original.
+Keep the original meaning intact — only change tone and structure, not the intent or content:
 
 formal:
   - Polite, structured, appropriate for official or professional situations
