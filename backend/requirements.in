@@ -1,4 +1,5 @@
 langgraph
+langchain-openai
 librosa
 python-dotenv
 openai

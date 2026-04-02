@@ -83,9 +83,12 @@ jsonpointer==3.0.0
     # via jsonpatch
 langchain-core==0.3.79
     # via
+    #   langchain-openai
     #   langgraph
     #   langgraph-checkpoint
     #   langgraph-prebuilt
+langchain-openai==0.3.35
+    # via -r requirements.in
 langgraph==0.6.10
     # via -r requirements.in
 langgraph-checkpoint==2.1.2
@@ -122,7 +125,9 @@ numpy==1.26.4
     #   soundfile
     #   soxr
 openai==2.3.0
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   langchain-openai
 orjson==3.11.3
     # via
     #   langgraph-sdk
@@ -182,12 +187,15 @@ pyyaml==6.0.3
     #   uvicorn
 redis==7.0.1
     # via -r requirements.in
+regex==2026.3.32
+    # via tiktoken
 requests==2.32.5
     # via
     #   -r requirements.in
     #   langsmith
     #   pooch
     #   requests-toolbelt
+    #   tiktoken
 requests-toolbelt==1.0.0
     # via langsmith
 rsa==4.9.1
@@ -222,6 +230,8 @@ tenacity==9.1.2
     # via langchain-core
 threadpoolctl==3.6.0
     # via scikit-learn
+tiktoken==0.12.0
+    # via langchain-openai
 tqdm==4.67.1
     # via openai
 typing-extensions==4.15.0
