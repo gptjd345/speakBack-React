@@ -1,15 +1,23 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../utils/api";
-import { fetchHistory, prepareAnalysis, runLangGraphRequest } from "../api/langgraphApi";
+import { fetchHistory, prepareAnalysis, runLangGraphRequestStream } from "../api/langgraphApi";
 import AudioUploader from "../components/AudioUploader";
 import ResultViewer from "../components/ResultViewer";
 import "../styles/Lab.css";
 
 // ─── Practice Card ────────────────────────────────────────────────
+const PROGRESS_STEPS = [
+  { step: 0, label: "Converting audio" },
+  { step: 1, label: "Transcribing speech" },
+  { step: 2, label: "Acoustic analysis" },
+  { step: 3, label: "AI evaluation" },
+];
+
 function PracticeCard({ index, sentence, user }) {
   const [file, setFile] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analysisStatus, setAnalysisStatus] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
@@ -18,13 +26,22 @@ function PracticeCard({ index, sentence, user }) {
     setAnalyzing(true);
     setResult(null);
     setError(null);
+    setAnalysisStatus(null);
     try {
-      const res = await runLangGraphRequest(file, user, sentence);
+      let res = null;
+      await runLangGraphRequestStream(
+        file,
+        user,
+        sentence,
+        (progress) => setAnalysisStatus(progress),
+        (result) => { res = result; },
+      );
       setResult(res);
     } catch {
       setError("Analysis failed. Please try again.");
     } finally {
       setAnalyzing(false);
+      setAnalysisStatus(null);
     }
   };
 
@@ -53,6 +70,21 @@ function PracticeCard({ index, sentence, user }) {
           )}
         </button>
       </div>
+
+      {analyzing && analysisStatus && (
+        <div className="sb-analysis-progress">
+          {PROGRESS_STEPS.map(({ step, label }) => {
+            const done = analysisStatus.step > step;
+            const active = analysisStatus.step === step;
+            return (
+              <div key={step} className={`sb-progress-step ${done ? "done" : active ? "active" : ""}`}>
+                <span className="sb-progress-icon">{done ? "✅" : active ? "⏳" : "○"}</span>
+                <span className="sb-progress-label">{label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {error && <div className="sb-practice-error">{error}</div>}
 
