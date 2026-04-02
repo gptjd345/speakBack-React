@@ -26,19 +26,9 @@ export const AuthProvider = ({ children }) => {
 
       try {
         await fetchMe();
-      } catch (err) {
-        if (err.response?.status === 401) {
-          try {
-            const refreshRes = await api.post("/api/auth/refresh");
-            localStorage.setItem("access_token", refreshRes.data.access_token);
-            await fetchMe();
-          } catch {
-            setUser(null);
-            localStorage.removeItem("access_token");
-          }
-        } else {
-          setUser(null);
-        }
+      } catch {
+        setUser(null);
+        localStorage.removeItem("access_token");
       } finally {
         setLoading(false);
       }

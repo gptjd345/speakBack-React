@@ -6,6 +6,12 @@ const api = axios.create({
   withCredentials: true, // refresh token 쿠키 자동 전송
 });
 
+// 인터셉터 없는 별도 인스턴스 — refresh 요청 전용
+const authApi = axios.create({
+  baseURL: process.env.REACT_APP_API_BASE_URL,
+  withCredentials: true,
+});
+
 // access token을 Authorization 헤더에 담음
 api.interceptors.request.use((config) => {
   const access_token = localStorage.getItem("access_token");
@@ -21,11 +27,12 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const isAuthEndpoint = originalRequest.url?.includes("/api/auth/");
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true;
 
       try {
-        const refreshRes = await api.post("/api/auth/refresh");
+        const refreshRes = await authApi.post("/api/auth/refresh");
         const newAccessToken = refreshRes.data.access_token;
 
         localStorage.setItem("access_token", newAccessToken);

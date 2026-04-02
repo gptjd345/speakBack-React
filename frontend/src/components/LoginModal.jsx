@@ -51,7 +51,7 @@ function LoginModal({ onClose }) {
   return (
     <div
       className="sb-modal-overlay"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="sb-modal">
         <button className="sb-modal-close-btn" onClick={onClose}>X</button>
