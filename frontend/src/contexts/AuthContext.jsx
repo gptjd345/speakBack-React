@@ -1,6 +1,5 @@
-import React, { createContext, useState, useEffect, useContext } from "react";
+import { createContext, useState, useEffect, useContext } from "react";
 import api from "../utils/api";
-const IS_PROD = process.env.REACT_APP_ENV === "production";
 
 export const AuthContext = createContext();
 
@@ -8,48 +7,38 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // me 요청 에러 핸들링은 호출자가 한다.
   const fetchMe = async () => {
     const res = await api.post("/api/auth/me");
     if (res.data.user) {
       setUser(res.data.user);
-      console.log("fetchMe response:", res.data);
     }
   }
 
   // 앱 첫 로드 시 세션 확인
-  // /me 요청 실패 시(access token 만료) -> refresh 요청 -> 성공하면 새 access 토큰으로 재시도
+  // access token 없으면 비로그인 상태로 바로 종료
+  // access token 만료 시 refresh 시도 (쿠키의 refresh token 자동 전송)
   useEffect(() => {
     const initAuth = async () => {
-    // 로컬: 토큰 없으면 비로그인 상태로 바로 종료
-    if (!IS_PROD && !localStorage.getItem("access_token")) {
-      setLoading(false);
-      return;
-    }
+      if (!localStorage.getItem("access_token")) {
+        setLoading(false);
+        return;
+      }
 
       try {
         await fetchMe();
-
-      } catch (err){
-        // access token 만료 or 없음 -> refresh 시도
-        if(err.response?.status === 401){
+      } catch (err) {
+        if (err.response?.status === 401) {
           try {
-            const refreshRes = await api.post("/api/auth/refresh"); // refresh 토큰으로 access 토큰 발급
-
-            // 새 토큰 localStorage 업데이트
-            if (!IS_PROD) {
-              localStorage.setItem("access_token", refreshRes.data.access_token);
-              localStorage.setItem("refresh_token", refreshRes.data.refresh_token);
-            }
-
-            await fetchMe(); // 새 access 토큰으로 재시도
+            const refreshRes = await api.post("/api/auth/refresh");
+            localStorage.setItem("access_token", refreshRes.data.access_token);
+            await fetchMe();
           } catch {
-            setUser(null); // refresh도 만료된 경우 로그인 필요
+            setUser(null);
+            localStorage.removeItem("access_token");
           }
         } else {
-          setUser(null); // 로그인 안 된 상태
+          setUser(null);
         }
-        
       } finally {
         setLoading(false);
       }
@@ -58,9 +47,8 @@ export const AuthProvider = ({ children }) => {
     initAuth();
   }, []);
 
-  // 로그인 데이터를 전역으로 저장
   const login = (userData) => {
-    if(!userData) return;
+    if (!userData) return;
     setUser(userData);
   };
 
@@ -71,10 +59,7 @@ export const AuthProvider = ({ children }) => {
       // 로그아웃 실패해도 클라이언트 상태는 초기화
     }
     setUser(null);
-    if (!IS_PROD) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-    }
+    localStorage.removeItem("access_token");
   };
 
   const refreshUser = async () => {

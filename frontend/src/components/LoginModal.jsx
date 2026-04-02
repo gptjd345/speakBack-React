@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../utils/api";
 import "../styles/LoginModal.css";
 
-function LoginModal({ onClose, onLogin }) {
+function LoginModal({ onClose }) {
   const { login } = useAuth();
   const [tab, setTab] = useState("login");
   const [form, setForm] = useState({ username: "", password: "", email: "" });
@@ -17,7 +17,6 @@ function LoginModal({ onClose, onLogin }) {
     const res = await api.post("/api/auth/login", { username, password });
     
     localStorage.setItem("access_token", res.data.access_token);
-    localStorage.setItem("refresh_token", res.data.refresh_token);
 
     return res.data.user;
   };

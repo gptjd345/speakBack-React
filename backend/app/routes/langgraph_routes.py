@@ -7,7 +7,10 @@ from app.core.s3 import generate_presigned_upload_url, download_file_bytes, dele
 from app.services.analysis_result import save_analysis_result
 import asyncio, json, tempfile, os
 from concurrent.futures import ThreadPoolExecutor
-
+from app.agents.suggest_graph import run_suggest
+from app.services.pronunciation import analyze_communicative_weight, tts_generate_us
+from app.services.pronunciation import evaluate_pronunciation
+import subprocess, base64
 
 router = APIRouter()
 
@@ -44,7 +47,7 @@ def suggest_sentences(
     body: SuggestRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    from app.agents.suggest_graph import run_suggest
+    
     return run_suggest(body.target_text)
 
 
@@ -58,7 +61,7 @@ def prepare_analysis(
     body: PrepareRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    from app.services.pronunciation import analyze_communicative_weight, tts_generate_us
+    
 
     with ThreadPoolExecutor() as executor:
         executor.submit(analyze_communicative_weight, body.target_text)
@@ -82,9 +85,7 @@ async def process_audio_stream(
     def _run():
         tmp_src = tmp_dst = None
         try:
-            from app.services.pronunciation import evaluate_pronunciation
-            import subprocess, base64
-
+            
             # S3 다운로드 + ffmpeg 변환
             loop.call_soon_threadsafe(queue.put_nowait, {"step": 0, "total": 3, "status": "오디오 다운로드 중..."})
             audio_bytes = download_file_bytes(s3_key)
@@ -133,12 +134,16 @@ async def process_audio_stream(
                     os.remove(path)
 
     async def generate():
-        ThreadPoolExecutor(max_workers=1).submit(_run)
-        while True:
-            msg = await queue.get()
-            yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
-            if msg.get("done") or msg.get("error"):
-                break
+        executor = ThreadPoolExecutor(max_workers=1)
+        executor.submit(_run)
+        try:
+            while True:
+                msg = await queue.get()
+                yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
+                if msg.get("done") or msg.get("error"):
+                    break
+        finally:
+            executor.shutdown(wait=False)
 
     return StreamingResponse(
         generate(),

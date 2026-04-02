@@ -3,13 +3,7 @@ from app.core import security
 from app.core.redis import redis_client
 
 def get_current_user(request: Request):
-    # 운영: 쿠키에서 토큰 추출
-    """
-    access_token = request.cookies.get("access_token")  # 운영 (httpOnly 쿠키)
-    
-    """
-    #로컬: Authorization 헤더에서 토큰 추출
-    access_token = request.headers.get("Authorization", "").replace("Bearer ", "")  # 로컬
+    access_token = request.headers.get("Authorization", "").replace("Bearer ", "")
     
     # 1. 토큰 디코딩
     try:

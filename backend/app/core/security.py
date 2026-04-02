@@ -1,20 +1,9 @@
 from passlib.context import CryptContext
-from dotenv import load_dotenv
-import os
-
 from datetime import datetime, timedelta
-from jose import jwt
-from app.core.config import settings
-from app.core.redis import redis_client
-from uuid import uuid4
 from jose import jwt, JWTError, ExpiredSignatureError
 from fastapi import HTTPException
-
-# password
-load_dotenv()
-
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM")
+from app.core.config import settings
+from uuid import uuid4
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -40,13 +29,7 @@ def create_access_token(user_id: int, token_version: int, username: str, email: 
         "exp": expire
     }
 
-    encoded_jwt = jwt.encode(
-        payload, 
-        settings.JWT_SECRET_KEY, 
-        algorithm=settings.JWT_ALGORITHM
-    )
-
-    return encoded_jwt
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 def create_refresh_token(user_id: int, token_version: int):
     now = datetime.utcnow()
@@ -61,9 +44,7 @@ def create_refresh_token(user_id: int, token_version: int):
         "exp": expire
     }
 
-    encoded_jwt = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
-    
-    return encoded_jwt, jti, expire
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM), jti, expire
 
 def decode_access_token(token: str):
     try:
