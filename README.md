@@ -58,9 +58,9 @@
 [Sentence Suggestion (LangGraph Agent)]
   LLM이 입력 문장 분석
   → report_analysis 툴 호출 (어조 감지 + 문법 교정)
-  → 해당 어조를 제외한 2개 convert 툴 동적 선택·실행
-     (convert_formal / convert_neutral / convert_informal)
-  → 최종 결과: 어조, 교정 문장, 2가지 변환 문장 반환
+  → dispatch_node가 tone에 따라 convert 툴 결정·실행
+     formal → convert_informal / informal → convert_formal / neutral → 둘 다
+  → 최종 결과: 어조, 교정 문장, 변환 문장 반환
 
 [Practice Lab (RAG)]
   최근 세션 패턴 벡터 → pgvector 유사도 검색
@@ -103,6 +103,7 @@ session_history
 ├── strengths       JSON             -- 잘한 부분 ["word", ...]
 ├── improvements    JSON             -- 개선 필요 ["word", ...]
 ├── rhythm_feedback TEXT             -- 리듬 피드백
+├── acoustic_features JSON           -- 음향 피처 (동일 문장 재시도 비교용)
 └── created_at      DATETIME
 
 session_patterns                     -- RAG 검색용 벡터 테이블
@@ -194,7 +195,7 @@ speakBack-React/
     │   ├── routes/             # auth, analyze, history, lab
     │   ├── core/               # security, redis, s3, embedding
     │   ├── db/                 # models: users, session_history, session_patterns
-    │   ├── services/           # pronunciation.py, analysis_result.py
+    │   ├── services/           # audio.py, acoustic.py, evaluation.py, analysis_result.py
     │   └── agents/             # suggest_graph.py (LangGraph)
     └── alembic/                # DB 마이그레이션
 ```

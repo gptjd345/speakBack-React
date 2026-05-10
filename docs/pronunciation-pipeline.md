@@ -178,6 +178,7 @@ thought → dought
 - 평탄한 발화 여부
 - 연음 정보
 - STT 불일치 단어
+- 이전 시도 비교 데이터 (동일 문장 재시도 시)
 
 **출력**
 
@@ -199,7 +200,40 @@ thought → dought
 
 ---
 
-## 10. 성능 문제 해결 (Numba JIT)
+## 10. 비교 피드백 (동일 문장 재시도)
+
+같은 목표 문장을 두 번 이상 연습할 경우, 이전 시도와 현재 시도를 음향 수치로 비교하여 GPT 피드백에 반영합니다.
+
+**저장 구조**
+
+세션 완료 시 `session_history.acoustic_features`에 compact 형태로 저장합니다.
+
+```json
+{
+  "energy_cv": 0.23,
+  "is_monotone": false,
+  "words": [
+    { "word": "probably", "rms_energy": 0.0412, "energy_rank": 1, "duration": 0.35 }
+  ]
+}
+```
+
+**비교 항목**
+
+| 항목 | 방법 |
+|---|---|
+| 에너지 대비 변화 | CV delta (증가 = 강세 대비 개선) |
+| 평탄한 발화 개선 | 이전이 monotone이었는데 현재는 아닐 때 |
+| 단어별 강세 순위 변화 | rank 차이 ≥ 2인 단어만 추출 |
+
+**GPT 프롬프트 반영**
+
+이전 시도 데이터가 있을 경우 `[5] Comparison with previous attempt` 섹션을 프롬프트에 추가하고,
+GPT가 strengths 또는 improvements에서 변화를 명시적으로 언급하도록 지시합니다.
+
+---
+
+## 11. 성능 최적화 — Numba JIT 워밍업
 
 **문제**
 
@@ -218,7 +252,7 @@ def startup():
 
 ---
 
-## 11. 성능 최적화 (2단계 UI + SSE)
+## 12. 성능 최적화 — 2단계 UI + SSE
 
 **병목 구간**
 
@@ -253,7 +287,7 @@ step 3: AI 평가 중...
 
 ---
 
-## 12. 결론
+## 13. 결론
 
 본 시스템은 단순 STT 기반 평가의 한계를 인지하고,
 초기 설계 단계부터 communicable pronunciation을 목표로 설정하여

@@ -1,17 +1,21 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.auth_routes import router as api_router
-from app.routes.langgraph_routes import router as analyze_router
+from app.routes.langgraph_routes import router as analyze_router, _analysis_executor
 from app.routes.history_routes import router as history_router
 from app.routes.lab_routes import router as lab_router
 from app.db.database import Base, engine
-from app.services.pronunciation import warmup_librosa
+from app.services.audio import warmup_librosa
 
 app = FastAPI(title="SpeakBack API")
 
 @app.on_event("startup")
 async def startup():
-    warmup_librosa()  # 서버 시작 시 numba JIT 컴파일 백그라운드 실행
+    warmup_librosa()
+
+@app.on_event("shutdown")
+async def shutdown():
+    _analysis_executor.shutdown(wait=False)
 
 # CORS 설정 (React 프론트엔드 접근 허용)
 origins = [

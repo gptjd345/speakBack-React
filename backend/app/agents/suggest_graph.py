@@ -1,5 +1,5 @@
 """
-LangGraph tool calling 기반 문장 제안 그래프.
+ tool calling 기반 문장 제안 그래프.
 
 흐름:
   analysis_node (LLM — report_analysis만 바인딩)

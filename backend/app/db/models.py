@@ -34,6 +34,7 @@ class SessionHistory(Base):
     strengths = Column(JSON, nullable=True)              # 잘한 부분 ["word1", ...]
     improvements = Column(JSON, nullable=True)           # 개선 필요 ["word1", ...]
     rhythm_feedback = Column(Text, nullable=True)        # 리듬 피드백
+    acoustic_features = Column(JSON, nullable=True)      # 음향 피처 (diff 비교용)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class SessionPattern(Base):

@@ -14,6 +14,7 @@ def save_analysis_result(
     strengths: list,
     improvements: list,
     rhythm_feedback: str | None,
+    acoustic_features: dict | None = None,
 ):
     """분석 결과를 session_history + session_patterns 테이블에 저장"""
     db = SessionLocal()
@@ -26,6 +27,7 @@ def save_analysis_result(
             strengths=strengths or [],
             improvements=improvements or [],
             rhythm_feedback=rhythm_feedback,
+            acoustic_features=acoustic_features,
         )
         db.add(record)
         db.commit()

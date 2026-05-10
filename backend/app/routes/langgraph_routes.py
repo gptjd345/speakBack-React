@@ -8,8 +8,12 @@ from app.services.analysis_result import save_analysis_result
 import asyncio, json, tempfile, os
 from concurrent.futures import ThreadPoolExecutor
 from app.agents.suggest_graph import run_suggest
-from app.services.pronunciation import analyze_communicative_weight, tts_generate_us
-from app.services.pronunciation import evaluate_pronunciation
+
+_analysis_executor = ThreadPoolExecutor(max_workers=4)
+from app.services.audio import tts_generate_us
+from app.services.evaluation import analyze_communicative_weight, evaluate_pronunciation
+from app.db.database import SessionLocal
+from app.db.models import SessionHistory
 import subprocess, base64
 
 router = APIRouter()
@@ -90,6 +94,7 @@ async def process_audio_stream(
             loop.call_soon_threadsafe(queue.put_nowait, {"step": 0, "total": 3, "status": "오디오 다운로드 중..."})
             audio_bytes = download_file_bytes(s3_key)
 
+            # result[0]은 버리고 result[1] 확장자만 ext변수에 담아서 사용
             _, ext = os.path.splitext(original_filename)
             ext = ext.lower() if ext else ".bin"
             with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as f:
@@ -102,11 +107,30 @@ async def process_audio_stream(
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
             )
 
+            # 이전 시도 acoustic_features 조회 (동일 target_text + user)
+            prev_features = None
+            db = SessionLocal()
+            try:
+                prev_session = (
+                    db.query(SessionHistory)
+                    .filter(
+                        SessionHistory.user_id == current_user["id"],
+                        SessionHistory.target_text == target_text,
+                        SessionHistory.acoustic_features.isnot(None),
+                    )
+                    .order_by(SessionHistory.created_at.desc())
+                    .first()
+                )
+                if prev_session:
+                    prev_features = prev_session.acoustic_features
+            finally:
+                db.close()
+
             # 발음 평가
             def on_progress(step, total, status):
                 loop.call_soon_threadsafe(queue.put_nowait, {"step": step, "total": total, "status": status})
 
-            result = evaluate_pronunciation(target_text, tmp_dst, "us", on_progress=on_progress)
+            result = evaluate_pronunciation(target_text, tmp_dst, "us", on_progress=on_progress, prev_features=prev_features)
 
             # DB 저장
             save_analysis_result(
@@ -118,10 +142,11 @@ async def process_audio_stream(
                 strengths=result.get("strengths", []),
                 improvements=result.get("improvements", []),
                 rhythm_feedback=result.get("rhythm_feedback"),
+                acoustic_features=result.get("compact_acoustic"),
             )
 
             # 최종 결과 전송
-            serializable = {k: v for k, v in result.items() if k != "reference_tts"}
+            serializable = {k: v for k, v in result.items() if k not in ("reference_tts", "compact_acoustic")}
             serializable["us_audio"] = base64.b64encode(result.get("reference_tts") or b"").decode()
             loop.call_soon_threadsafe(queue.put_nowait, {"done": True, "result": serializable})
 
@@ -134,16 +159,12 @@ async def process_audio_stream(
                     os.remove(path)
 
     async def generate():
-        executor = ThreadPoolExecutor(max_workers=1)
-        executor.submit(_run)
-        try:
-            while True:
-                msg = await queue.get()
-                yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
-                if msg.get("done") or msg.get("error"):
-                    break
-        finally:
-            executor.shutdown(wait=False)
+        _analysis_executor.submit(_run)
+        while True:
+            msg = await queue.get()
+            yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
+            if msg.get("done") or msg.get("error"):
+                break
 
     return StreamingResponse(
         generate(),
