@@ -33,6 +33,7 @@ export default function useLangGraph() {
       return finalResult;
     } catch (err) {
       setError(err.message || "Unknown error occurred");
+      throw err;
     } finally {
       setLoading(false);
       setAnalysisStatus(null);

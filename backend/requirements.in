@@ -19,3 +19,4 @@ pydantic-settings
 pydub
 boto3
 pgvector
+langdetect

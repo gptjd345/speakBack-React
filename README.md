@@ -45,13 +45,15 @@
   └─ POST /api/analyze/process/stream → 발음 분석 (SSE 스트리밍)
 
 [Pronunciation Pipeline]
-  S3 다운로드
+  입력 문장 검증 (길이 10~500자, 영어 여부 — S3/STT/GPT 호출 전 차단)
+  → S3 다운로드
   → ffmpeg (16kHz mono wav 정규화)
-  → Whisper API (STT + word timestamps)    ─┐
-  → OpenAI TTS (참고 음성 생성)              ├─ 병렬 실행
-  → GPT communicative weight 분석          ─┘
-  → librosa acoustic analysis (단어별 RMS energy, 연음 감지)
-  → GPT 평가 (강세 패턴 + intelligibility → 점수 + 피드백)
+  → Whisper API (STT + 단어 타임스탬프)    ─┐
+  → OpenAI TTS (참고 음성 생성)             ├─ 병렬 실행
+  → GPT 단어별 전달력 가중치 분석           ─┘
+  → STT 결과 영어 여부 검증 (비영어 발화 시 이후 단계 차단)
+  → librosa 음향 분석 (단어별 에너지 순위, 연음 감지)
+  → GPT 평가 (강세 패턴 + 전달력 → 점수 + 피드백)
   → session_history 저장 + session_patterns 임베딩 저장
   ※ 각 단계 완료 시 SSE로 진행 상황을 프론트에 실시간 전송
 

@@ -1,5 +1,5 @@
 # routes.py
-from fastapi import APIRouter, Form, Depends
+from fastapi import APIRouter, Form, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.core.dependencies import get_current_user
@@ -12,6 +12,7 @@ from app.agents.suggest_graph import run_suggest
 _analysis_executor = ThreadPoolExecutor(max_workers=4)
 from app.services.audio import tts_generate_us
 from app.services.evaluation import analyze_communicative_weight, evaluate_pronunciation
+from app.services.validation import is_english
 from app.db.database import SessionLocal
 from app.db.models import SessionHistory
 import subprocess, base64
@@ -65,7 +66,13 @@ def prepare_analysis(
     body: PrepareRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    
+    text = body.target_text.strip()
+    if len(text) < 10:
+        raise HTTPException(status_code=400, detail="Sentence is too short. Please enter at least 10 characters.")
+    if len(text) > 500:
+        raise HTTPException(status_code=400, detail="Sentence is too long. Please keep it under 500 characters.")
+    if not is_english(text):
+        raise HTTPException(status_code=400, detail="Please enter an English sentence.")
 
     with ThreadPoolExecutor() as executor:
         executor.submit(analyze_communicative_weight, body.target_text)
@@ -90,6 +97,18 @@ async def process_audio_stream(
         tmp_src = tmp_dst = None
         try:
             
+            # target_text 길이 및 영어 검증 (S3/STT/GPT 호출 전 차단)
+            text = target_text.strip()
+            if len(text) < 10:
+                loop.call_soon_threadsafe(queue.put_nowait, {"error": "Sentence is too short. Please enter at least 10 characters."})
+                return
+            if len(text) > 500:
+                loop.call_soon_threadsafe(queue.put_nowait, {"error": "Sentence is too long. Please keep it under 500 characters."})
+                return
+            if not is_english(text):
+                loop.call_soon_threadsafe(queue.put_nowait, {"error": "Please enter an English sentence."})
+                return
+
             # S3 다운로드 + ffmpeg 변환
             loop.call_soon_threadsafe(queue.put_nowait, {"step": 0, "total": 3, "status": "오디오 다운로드 중..."})
             audio_bytes = download_file_bytes(s3_key)

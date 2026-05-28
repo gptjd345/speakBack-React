@@ -8,6 +8,7 @@ from pydub import AudioSegment
 
 from app.core.redis import redis_client
 from app.services.audio import get_client, stt_whisper, tts_generate_us
+from app.services.validation import is_english
 from app.services.acoustic import (
     analyze_acoustic_features,
     compact_acoustic_features,
@@ -246,6 +247,11 @@ def evaluate_pronunciation(
         user_transcript, conf_dict, word_timestamps = stt_future.result()
     print(f"[text_analysis+TTS+STT 병렬] {time.time()-t0:.2f}s")
 
+    # transcript 영어 검증 (acoustic + GPT 평가 비용 차단)
+    if user_transcript and not is_english(user_transcript):
+        print(f"[비영어 발화 감지] transcript='{user_transcript[:60]}' → 분석 중단")
+        raise ValueError("Non-English speech detected. Please speak in English.")
+
     # 2) acoustic 분석
     _notify(2, 3, "음향 분석 중...")
     t1 = time.time()
@@ -298,11 +304,12 @@ def evaluate_pronunciation(
     ]
     func_mean_energy = float(np.mean(function_energies)) if function_energies else 0.0
 
+    _STRIP = ".,!?'"
     stress_violation_lines = "\n".join(
-        f"  STRESS WEAK: '{f['word']}' (weight={word_weight_map.get(f['word'].lower().strip(\".,!?'\"), 'low')}) "
+        f"  STRESS WEAK: '{f['word']}' (weight={word_weight_map.get(f['word'].lower().strip(_STRIP), 'low')}) "
         f"energy={f['rms_energy']:.4f} < func_mean={func_mean_energy:.4f}"
         for f in acoustic_features
-        if word_weight_map.get(f["word"].lower().strip(".,!?'"), "low") in ("high", "medium")
+        if word_weight_map.get(f["word"].lower().strip(_STRIP), "low") in ("high", "medium")
         and func_mean_energy > 0
         and f["rms_energy"] < func_mean_energy
     ) or "  (none — all content words are above function word mean)"

@@ -182,8 +182,10 @@ function Coach() {
 
   // ─── Step 1: 문장 제출 → 사전 분석 캐싱 + 문장 제안 ────────────
   const handlePrepare = async () => {
-    if (!user)              { showToast("Please sign in to use the Pronunciation Coach."); return; }
-    if (!targetText.trim()) { showToast("Please enter a target sentence."); return; }
+    if (!user)                        { showToast("Please sign in to use the Pronunciation Coach."); return; }
+    if (!targetText.trim())           { showToast("Please enter a target sentence."); return; }
+    if (targetText.trim().length < 10){ showToast("Sentence is too short. Please enter at least 10 characters."); return; }
+    if (targetText.trim().length > 500){ showToast("Sentence is too long. Please keep it under 500 characters."); return; }
 
     setPreparing(true);
     setSuggestions(null);
@@ -198,8 +200,9 @@ function Coach() {
       setActiveResult(null);
       setSelectedId(null);
       setSuggestions(suggestResult);
-    } catch {
-      showToast("Failed to prepare. Please try again.");
+    } catch (err) {
+      const msg = err?.response?.data?.detail || "Failed to prepare. Please try again.";
+      showToast(msg);
     } finally {
       setPreparing(false);
     }
@@ -212,10 +215,14 @@ function Coach() {
     setActiveResult(null);
     setSelectedId(null);
 
-    const res = await runLangGraphProcess(file, user, targetText);
-    if (res) {
-      setActiveResult(res);
-      await loadHistory(user);
+    try {
+      const res = await runLangGraphProcess(file, user, targetText);
+      if (res) {
+        setActiveResult(res);
+        await loadHistory(user);
+      }
+    } catch (err) {
+      showToast(err.message || "Analysis failed. Please try again.");
     }
   };
 
